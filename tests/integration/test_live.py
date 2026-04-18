@@ -93,10 +93,15 @@ def test_login_obtains_session(auth: KyotoUAuth) -> None:
 
 
 def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
+    # KULASIS rewrites ``/student/la/top`` into a faculty-specific path
+    # such as ``/student/u/t/top?server=europa`` post-login, so we only
+    # assert the generic ``/student/`` namespace. An unauthenticated hit
+    # would bounce off-host to the IIMC IdP and be caught by the host
+    # check in _assert_authenticated_response.
     r = KULASIS(auth).get("/student/la/top")
     _assert_authenticated_response(
         r, expected_host="www.k.kyoto-u.ac.jp",
-        expected_path_prefix="/student/la/top",
+        expected_path_prefix="/student/",
     )
     # The student's own ID appears in the KULASIS header — a stronger
     # identity check than "the page mentions Kyoto University".

@@ -160,13 +160,22 @@ def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
     )
 
 
-def test_mykuline_secure_mypage(auth: KyotoUAuth) -> None:
+def test_mykuline_us_info_is_readable(auth: KyotoUAuth) -> None:
+    # ``/opac/us_info/`` is the logged-in "利用者情報" page. Unlike the initial
+    # ``/opac/opac_secure/opac_search/`` entry, it does not re-trigger the
+    # securelogin auto-submit — a direct GET after ``_ensure_session`` has
+    # established the Django session returns the real page.
     r = _fetch_with_upstream_retry(
-        lambda: MyKULINE(auth).get("/opac/opac_secure/opac_mypage/")
+        lambda: MyKULINE(auth).get("/opac/us_info/?lang=0")
     )
     _assert_authenticated_response(
         r, expected_host="kuline.kulib.kyoto-u.ac.jp",
-        expected_path_prefix="/opac/opac_secure/",
+        expected_path_prefix="/opac/us_info/",
+    )
+    # us_info does not echo the EPPN, but a logged-in view always carries a
+    # logout link. The pre-login securelogin shell has no logout link.
+    assert "logout" in r.text.lower() or "\u30ed\u30b0\u30a2\u30a6\u30c8" in r.text, (
+        "logged-in us_info should carry a logout link"
     )
 
 

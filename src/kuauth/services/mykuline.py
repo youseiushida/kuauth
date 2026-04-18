@@ -33,7 +33,7 @@ class MyKULINE(ShibbolethSPService):
         return self._follow_securelogin(r)
 
     def _follow_securelogin(
-        self, r: httpx.Response, *, max_hops: int = 6
+        self, r: httpx.Response, *, max_hops: int = 3
     ) -> httpx.Response:
         # Django OPAC wraps every secure page with an auto-submit form
         # (id="securelogin") that JS POSTs back to `rurl`. httpx doesn't run
@@ -42,6 +42,16 @@ class MyKULINE(ShibbolethSPService):
             if not _parsers.contains_eppn_form(r.text):
                 return r
             form = _parsers.parse_mykuline_eppn_form(r.text, base_url=str(r.url))
+            # If the server returned a securelogin shell with empty `rurl`,
+            # replaying it self-loops forever (the JS sets action=rurl, and
+            # the browser does the same). This happens when the requested
+            # path is not a valid secure-entry URL — there's no populated SSO
+            # payload to forward.
+            if not form["fields"].get("rurl"):
+                raise SPAccessError(
+                    f"MyKULINE: securelogin shell at {r.url} has empty rurl; "
+                    f"this path is not a valid SSO entry point"
+                )
             r = self.http.post(
                 form["action"],
                 data=form["fields"],

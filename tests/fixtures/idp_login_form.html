@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><title>Kyoto University Authentication System</title></head>
+<body>
+<div id="content">
+  <h2>\u4eac\u90fd\u5927\u5b66\u5168\u5b66\u8a8d\u8a3c\u30b7\u30b9\u30c6\u30e0</h2>
+  <form id="login" name="login" method="post" action="login.cgi" autocomplete="off">
+    <input type="text" name="dummy_user" style="display:none;">
+    <input type="password" name="dummy_pw" style="display:none;">
+    <label>User ID
+      <input type="text" name="username" value="" autocomplete="username">
+    </label>
+    <label>Password
+      <input type="password" name="password" value="" autocomplete="current-password">
+    </label>
+    <input type="hidden" name="op" value="login">
+    <input type="hidden" name="back" value="https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?RequestID=_TEST_REQUEST_ID">
+    <input type="hidden" name="sessid" value="TEST_SESSID_LOGIN_ABC">
+    <input type="submit" name="submit" value="Login">
+  </form>
+</div>
+</body>
+</html>

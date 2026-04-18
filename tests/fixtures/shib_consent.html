@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><title>Information Release</title></head>
+<body>
+<h2>Information Release</h2>
+<form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s1" method="post">
+  <input type="hidden" name="csrf_token" value="TEST_CSRF_CONSENT">
+  <fieldset>
+    <legend>Information that will be sent</legend>
+    <input type="checkbox" name="_shib_idp_consentIds" value="uid" checked>uid<br>
+    <input type="checkbox" name="_shib_idp_consentIds" value="mail" checked>mail<br>
+  </fieldset>
+  <input type="checkbox" name="_shib_idp_consentOptions" value="_shib_idp_rememberConsent">
+  <input type="submit" name="_eventId_proceed" value="Accept">
+</form>
+</body>
+</html>

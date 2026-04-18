@@ -1,0 +1,227 @@
+
+● 重要度順に並べます。
+
+  ---
+  Critical
+
+  C1. IdP への 無限リトライ → アカウントロックの可能性 (services/_base.py:68-88)
+
+  def _advance_through_idp(self, r):
+      for _ in range(15):
+          ...
+          if _parsers.contains_shib_idp_login_form(r.text):
+              r = self._submit_shib_idp_login(r)
+              continue
+
+  パスワードが誤っていた場合、Shib IdP は同じログインフォームを返す → ループが再度 contains_shib_idp_login_form を検出 → 同じ誤ったパスワードを最大 15 回 POST。Kyoto-U SSO のロックアウト閾値は通常 5
+  回程度。.get() 1 回で即ロックアウトのリスク。
+
+  修正: _submit_shib_idp_login の直後に、j_username フォームがまだ出ているなら AuthenticationError("invalid credentials") で即 raise。consent / localStorage / SAML についても同一形状の停滞検出を入れる。
+
+  ---
+  C2. パスワード / OTP 失敗の検出がない (auth.py:92-113)
+
+  login() は POST 後の結果を検証せず、直線的に次ステップへ進む。
+  - 誤ったパスワード → /pub/login.cgi がログインフォームを再描画 → contains_authselect は false → _submit_otp(r) が 同じログインフォーム を parse_otp_form (id=login + sessid) で拾って、username + 6桁 OTP
+  をパスワードとして再 POST → 実質 2 回失敗が 1 コールで起きる。
+  - 誤った OTP → 同様に parse_saml_autosubmit が AuthenticationError("SAMLResponse field missing") で落ちる。原因はユーザに伝わらない。
+
+  修正: 各段で「次の期待形状に進んだこと」を predicate で確認し、失敗なら明示的に AuthenticationError("password rejected") / "otp rejected" を上げる。
+
+  ---
+  C3. password プロパティが外部公開されている (auth.py:88-90)
+
+  @property
+  def password(self) -> str:
+      return self._password
+
+  - __repr__ / デバッガ / vars() / ロギングで平文漏洩の動線になる。
+  - 現状これを使っているのは services/_base.py:_submit_shib_idp_login だけ。外部 API として露出させる必要はない。
+
+  修正: _password に直接アクセスさせる or internal-only メソッド経由にし、password プロパティを削除。さらに __repr__ を定義して平文を隠す。
+
+  ---
+  High
+
+  H1. _shib_idp_consentIds のハードコード (_parsers.py:120-121)
+
+  fields.setdefault("_shib_idp_consentIds", "uid")
+
+  IdP 側で公開する属性は uid 以外にも mail, eduPersonPrincipalName, displayName など複数ありうる。本来はフォームの checked な checkbox の value を列挙して送るべき。現状は uid だけに同意したことになり、
+  - 必要な属性がリリースされず認証は通るが、SP 側でユーザ識別に失敗する可能性
+  - 逆にユーザが「次回から聞かない」を意図していなかった属性まで _shib_idp_rememberConsent で永続化される可能性
+
+  修正: form.find_all("input", {"name": "_shib_idp_consentIds"}) を全部拾い、checked の value をカンマ結合で送る (あるいは Shib IdP の仕様どおり複数 value を name 同一で POST)。
+
+  H2. _advance_through_idp が黙って失敗する
+
+  15 回ループが尽きても例外を上げず、_post_saml_hook(r) → r.status_code < 400 なら _sp_ready = True にしてしまう。ログインフォーム (200) を "セッション OK" として記憶するケースがあり、以降の .get() が認証前の
+  HTML を返す "偽成功" 状態になる。
+
+  修正: ループ終了時に「SP ドメイン上にいる」「中間フォームが出ていない」を確認、でなければ SPAccessError を raise。
+
+  H3. TOTP の 30 秒境界レース (auth.py:147)
+
+  if self._totp_secret:
+      return pyotp.TOTP(self._totp_secret).now()
+
+  .now() を呼んだ直後に時計が次の 30 秒に跨ぐと、IdP 到達時には失効コード → 認証失敗。KUAUTH_LIVE=1 の CI / cron で間欠的に失敗する症状になる。
+
+  修正:
+  totp = pyotp.TOTP(secret)
+  if totp.interval - (time.time() % totp.interval) < 3:
+      time.sleep(3.5)
+  return totp.now()
+  のようにウィンドウ端を避ける、または失敗時に 1 度だけ再試行 (ただし C1/C2 を直してから、でないとロックを誘発)。
+
+  H4. logging 使ってない (auth.py:15)
+
+  log = logging.getLogger("kuauth.auth")
+
+  定義だけされて一度も使われていない。ユーザが .login() の失敗原因を調査する手段が例外メッセージしかない。各フォーム取得 / POST の step 名と結果の 200/302/url を debug ログに出すことで、未知の IdP
+  仕様変更への耐障害性が大きく上がる (ただし リクエスト URL のクエリには SAMLRequest / sessid が含まれるので、パスのみ / ホスト名のみにマスクする)。パスワードや OTP が data= に入った request を log
+  に含めないよう注意。
+
+  H5. スレッド非安全
+
+  _logged_in と _sp_ready は lock なしの bool フラグ。KyotoUAuth を 2 スレッドから同時に使うと double login (= IdP に 2 セッション生成 or ロックカウンタ加算) が起きる。
+
+  修正: README に「非スレッドセーフ」と明記、あるいは threading.Lock で login() と _ensure_session() を括る。
+
+  ---
+  Medium
+
+  M1. SECLEVEL=1 が全接続に適用される (auth.py:24-31)
+
+  MyKULINE 固有の要件なのに、IdP / KULASIS / KULMS への接続でも弱い cipher を許容してしまう。
+
+  修正: httpx.HTTPTransport(verify=ssl_low) を MyKULINE ホストだけに mounts={"https://kuline.kulib.kyoto-u.ac.jp": low_transport} でバインド。
+
+  M2. _follow_securelogin の黙った打ち切り (services/mykuline.py:34-50)
+
+  for _ in range(max_hops):  # max_hops=3
+      if not _parsers.contains_eppn_form(r.text):
+          return r
+      ...
+  return r  # ← 3 周しても EPPN フォームがまだ残っていたら、そのフォームを返す
+
+  EPPN フォームを r として返してしまい、呼び出し側は "検索結果画面" のつもりで EPPN 中間ページをパースすることになる。
+
+  修正: ループを抜ける時に contains_eppn_form(r.text) ならエラー。
+
+  M3. KULASIS の encoding = "cp932" 無条件上書き (services/kulasis.py)
+
+  JSON / バイナリ / /favicon.ico 等、Shift_JIS でないレスポンスに対しても .encoding を cp932 にしてしまう。.text 経由では壊れる。
+
+  修正: Content-Type の charset を見て、text/html で charset 未指定 or Shift_JIS のときだけ上書き。
+
+  M4. _has_shibsession がドメインを見ない (auth.py:154-158)
+
+  for cookie in self._http.cookies.jar:
+      if cookie.name.startswith("_shibsession_"):
+          return True
+
+  実運用では *.kyoto-u.ac.jp 以外から _shibsession_* が付くことはまず無いが、cookie jar にゴミが入っていた場合の誤判定を防ぐため、cookie.domain を kyoto-u.ac.jp 配下に限定するべき。
+
+  M5. _collect_inputs が _saml.py に重複 (_saml.py:29-34)
+
+  _parsers._collect_inputs を使えば一貫する。現状だと SAML 側だけ「submit を除外しない」「name なしも含める (if name: のみ)」挙動で、仕様の差分が見えにくい。
+
+  M6. TOTP secret の空白・padding 正規化なし
+
+  pyotp.TOTP("JBSW Y3DP EHPK 3PXP").now() は binascii.Error を投げる。ユーザが QR 登録画面からスペース込みでコピペしがちなので、.replace(" ", "").replace("-", "").upper() + 長さ/charset
+  バリデーションを入れたい。
+
+  M7. Magic number の上限
+
+  _follow_meta_refresh(max_hops=10), _advance_through_idp(range(15)), _follow_securelogin(max_hops=3)。値の根拠がない。HAR から観測した実際の最大 hop 数をコメントに残すか、定数化。
+
+  ---
+  Low
+
+  L1. contains_* predicate が文字列マッチ
+
+  "authselect.php" in html / 'name="SAMLResponse"' in html は、HTML コメント / <script> ブロック / リンクテキスト内のマッチで誤検出しうる。現状の IdP HTML ではまず踏まないが、BeautifulSoup 解析で <form>
+  実体を見るほうが堅い。
+
+  L2. test_get_triggers_ensure_session_when_not_ready のコメント誤り (tests/unit/test_services_base.py:125)
+
+  ▎ Second call is a no-op (already ready), ensure_session still called (but sees _sp_ready)
+
+  実際は monkeypatch した fake が早期 return していないので calls["n"] が 2 になる。実装側の _ensure_session は if self._sp_ready: return で早期 return するのに、この fake
+  はそれを上書きしている。テスト意図と実装の挙動が合ってない。
+
+  L3. respx.mock(assert_all_called=False) が一律
+
+  期待したルートが呼ばれなくてもテストが落ちない。特に login flow のような順序が重要なテストでは assert_all_called=True が望ましい。
+
+  L4. MyKULINE の search_top レスポンスに「MyKULINE」という文字列があるだけで通るアサーション
+
+  EPPN 交換が本当にできているかは検証していない。Cookie JSESSIONID の有無 or 認証必須エンドポイントの 200 受領で確かめるほうが良い。
+
+  L5. close() が二重 close セーフでない
+
+  _owns_http = False なら外部所有、True なら close — OK。だが close() を 2 回呼んでも httpx.Client.close() は idempotent なので実害なし。_logged_in は close() でリセットしていないが、close 後の .login()
+  は「閉じた client を使おうとして死ぬ」動作になる。意図通りか要確認。
+
+  L6. KyotoUAuth.__enter__ は login() を呼ばない
+
+  with KyotoUAuth(...) as auth:
+      KULASIS(auth).get(...)
+  は動く (サービス側が _ensure_session → auth.login() を呼ぶので) が、ユーザは with ブロックでログイン完了を期待するかもしれない。README の Quickstart は .login()
+  を明示しているので矛盾はないが、ドキュメントに明記したい。
+
+  ---
+  まとめ
+
+  - 即修正推奨 (ロックアウト / 資格情報漏洩の実害): C1 / C2 / C3
+  - 動作の正しさに直結: H1 / H2 / H3
+  - 運用品質: H4 / H5 / M1〜M3
+
+  特に C1 は実 IdP で発火すると学生本人のアカウントがロックされる ので、integration テスト (KUAUTH_LIVE=1) を回す前に直しておいた方が良いです。
+
+
+• Findings
+
+  1. High: 認証フロー中の遷移先が無検証で、資格情報や SAMLResponse を第三者ホストへ送れます。/C:/Users/nezow/Documents/
+     kuauth/src/kuauth/auth.py:125 /C:/Users/nezow/Documents/kuauth/src/kuauth/auth.py:160 /C:/Users/nezow/Documents/
+     kuauth/src/kuauth/_parsers.py:56 /C:/Users/nezow/Documents/kuauth/src/kuauth/_parsers.py:89 /C:/Users/nezow/
+     Documents/kuauth/src/kuauth/_parsers.py:219 /C:/Users/nezow/Documents/kuauth/src/kuauth/_saml.py:39 /C:/Users/
+     nezow/Documents/kuauth/src/kuauth/services/_base.py:103
+     action/href/meta refresh/SAML form の送信先を urljoin() でそのまま採用しており、許可ホストの検証がありません。ロー
+     カル再現でも、細工した login form の action=https://evil.example/steal に対して _submit_password() が username と
+     password をそのまま POST しました。認証自動化コードとしては境界が甘すぎます。少なくとも IdP/SP ごとの host
+     allowlist が必要です。
+  2. Medium: SP セッション確立が「2xx なら成功」扱いで、未認証ページでも _sp_ready=True になります。/C:/Users/nezow/
+     Documents/kuauth/src/kuauth/services/_base.py:55 /C:/Users/nezow/Documents/kuauth/src/kuauth/services/_base.py:68 /
+     C:/Users/nezow/Documents/kuauth/src/kuauth/services/mykuline.py:34
+     _advance_through_idp() は 15 回回ったらその時点のレスポンスを返し、_ensure_session() は 4xx/5xx でない限り成功扱い
+     にします。ローカル再現でも、毎回ログインフォームを返すだけの SP で _sp_ready=True になりました。MyKULINE も
+     _follow_securelogin() が EPPN フォームのまま max_hops に達すると同じ誤判定になります。
+  3. Medium: login() の成功判定が cookie jar 内の「任意の _shibsession_*」に依存しており、古い別ドメイン cookie で成功誤
+     判定します。/C:/Users/nezow/Documents/kuauth/src/kuauth/auth.py:108 /C:/Users/nezow/Documents/kuauth/src/kuauth/
+     auth.py:154
+     _has_shibsession() は domain/path/current flow を見ません。ローカルで other.example 用の stale cookie を 1 個入れる
+     だけで True になりました。httpx.Client 注入を許している設計なので、既存 jar 再利用時に失敗ログインを見逃す実害があ
+     ります。
+  4. Medium: パスワード段階の失敗を OTP 段階と誤認し、OTP を誤ったフォームへ追加送信します。/C:/Users/nezow/Documents/
+     kuauth/src/kuauth/auth.py:98 /C:/Users/nezow/Documents/kuauth/src/kuauth/auth.py:136 /C:/Users/nezow/Documents/
+     kuauth/src/kuauth/_parsers.py:76
+     parse_otp_form() は実質 parse_login_form() と同じ条件で form を受理します。つまり、パスワード誤りで login form が再
+     表示されても login() はそれを OTP 画面とみなして _resolve_otp() を password フィールドへ入れて再 POST します。ワン
+     タイムコード消費、誤ロックアウト、エラー原因の隠蔽につながります。
+  5. Low: form パーサが重複 name を潰しており、ブラウザ送信と一致しません。/C:/Users/nezow/Documents/kuauth/src/kuauth/
+     _parsers.py:18 /C:/Users/nezow/Documents/kuauth/src/kuauth/_parsers.py:110
+     _collect_inputs() は dict[str, str] なので、同名 checkbox/hidden input の複数値を保持できません。再現でも checked
+     な _shib_idp_consentIds が 2 個あると最後の 1 個だけ残りました。Shibboleth の consent 画面は repeated fields を使い
+     がちなので、ページ変更に弱いです。
+  6. Low: TLS 緩和が全ホストに一律適用されています。/C:/Users/nezow/Documents/kuauth/src/kuauth/auth.py:24 /C:/Users/
+     nezow/Documents/kuauth/src/kuauth/auth.py:66
+     MyKULINE 互換のために DEFAULT@SECLEVEL=1 を使っていますが、これが IdP の password/OTP 通信も含めた全リクエストに効
+     きます。必要な host にだけ限定するか、明示 opt-in にしないと、不要に transport policy を下げています。
+
+  Assumptions
+
+  - KUAUTH_LIVE 用の実資格情報はないため、live integration は未実行です。
+  - これは source review と mock 再現に基づく指摘で、依存ライブラリの CVE 監査まではしていません。
+  - finding 1 は「上流 HTML を完全信頼するか」で重みが変わりますが、自動認証ライブラリとしては防御不足です。

@@ -1,0 +1,36 @@
+[project]
+name = "kuauth"
+version = "0.1.0"
+description = "Unified Python client for Kyoto University SSO services (KULASIS / KULMS / MyKULINE / PandA)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Yosei Ushida" }]
+dependencies = [
+    "httpx[http2]>=0.27",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "pyotp>=2.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "respx>=0.21",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kuauth"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: live credential tests; skipped unless KUAUTH_LIVE=1",
+    "replay: respx HAR replay tests",
+]
+addopts = "-ra --strict-markers"

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><title>MyKULINE Login</title></head>
+<body>
+<form action="./" id="securelogin" method="post">
+  <input type="hidden" name="csrfmiddlewaretoken" value="TEST_CSRF_EPPN">
+  <input type="hidden" name="lang" value="0">
+  <input type="hidden" name="loginMode" value="login">
+  <input type="hidden" name="EPPN" value="test-eppn@example.test">
+  <input type="hidden" name="rurl" value="/opac/opac_search/">
+  <input type="hidden" name="opkey" value="">
+</form>
+<script>document.forms[0].submit();</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><title>Kyoto University Authentication System (TOTP)</title></head>
+<body>
+<div id="content">
+  <h2>\u30ef\u30f3\u30bf\u30a4\u30e0\u30d1\u30b9\u30ef\u30fc\u30c9</h2>
+  <form id="login" name="login" method="post" action="otplogin.cgi" autocomplete="off">
+    <label>User ID
+      <input type="text" name="username" value="" autocomplete="username">
+    </label>
+    <label>One-time password
+      <input type="password" name="password" value="" autocomplete="one-time-code">
+    </label>
+    <input type="hidden" name="op" value="login">
+    <input type="hidden" name="back" value="https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?RequestID=_TEST_REQUEST_ID">
+    <input type="hidden" name="sessid" value="TEST_SESSID_OTP_XYZ">
+    <input type="submit" name="submit" value="Login">
+  </form>
+</div>
+</body>
+</html>

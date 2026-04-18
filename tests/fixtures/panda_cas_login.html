@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="UTF-8">
+<title>PandA - Log in</title>
+</head><body>
+<div id="content">
+  <form id="fm1" method="post"
+        action="/cas/login;jsessionid=TEST_JSESSIONID?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer">
+    <div>
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" size="25" tabindex="1" accesskey="u" autocomplete="off">
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" size="25" tabindex="2" accesskey="p" autocomplete="off">
+    </div>
+    <input type="hidden" name="lt" value="LT-1500-TEST_LOGIN_TICKET">
+    <input type="hidden" name="execution" value="e1s1">
+    <input type="hidden" name="_eventId" value="submit">
+    <input type="submit" name="submit" tabindex="4" value="LOGIN" accesskey="l">
+  </form>
+</div>
+</body></html>

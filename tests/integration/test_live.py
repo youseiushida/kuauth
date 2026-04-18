@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import os
 
+import httpx
 import pytest
 
 from kuauth import KyotoUAuth, KULASIS, KULMS, MyKULINE, PandA
+from kuauth import _parsers
 
 
 pytestmark = pytest.mark.integration
@@ -38,25 +40,90 @@ def auth() -> KyotoUAuth:
     a.close()
 
 
+def _assert_authenticated_response(
+    r: httpx.Response,
+    *,
+    expected_host: str,
+    expected_path_prefix: str,
+) -> None:
+    """Fail if the response looks like an unauthenticated/interstitial page.
+
+    Checks three things that together catch silent auth failures:
+
+    1. Final URL is on the SP host and the path didn't get rewritten to a
+       login endpoint (``/pub/login.cgi``, ``/idp/profile``, ``/cas/login``,
+       etc.).
+    2. The body contains no IdP/CAS form markers — anything that would
+       indicate we're still on an auth wall.
+    3. Body is non-trivial.
+    """
+    assert r.status_code == 200, f"got HTTP {r.status_code}"
+    assert r.url.host == expected_host, f"redirected off-host to {r.url}"
+    assert r.url.path.startswith(expected_path_prefix), (
+        f"redirected to unexpected path {r.url.path!r} "
+        f"(expected prefix {expected_path_prefix!r})"
+    )
+    body = r.text
+    # Any of these predicates matching means we're looking at an auth wall,
+    # not the resource. The service's ``_ensure_session`` should have caught
+    # this, but assert on the returned body too — defense in depth.
+    gates = {
+        "SSP login form (login.cgi)": _parsers.contains_login_form(body),
+        "SSP OTP form (otplogin.cgi)": _parsers.contains_otp_form(body),
+        "Shib IdP j_username form": _parsers.contains_shib_idp_login_form(body),
+        "Shib consent page": _parsers.contains_consent_page(body),
+        "Shib localStorage form": _parsers.contains_localstorage_form(body),
+        "SSP authselect picker": _parsers.contains_authselect(body),
+        "SAML auto-submit (stuck mid-flow)": _parsers.contains_saml_autosubmit(body),
+        "ECS CAS login form": _parsers.contains_cas_login_form(body),
+    }
+    hit = [name for name, flagged in gates.items() if flagged]
+    assert not hit, f"response still contains auth gate(s): {hit}"
+    assert len(body) > 500, f"body suspiciously short ({len(body)} chars)"
+
+
 def test_login_obtains_session(auth: KyotoUAuth) -> None:
+    # ``is_authenticated`` flips only after a ``_shibsession_*`` cookie is
+    # seen — this isn't forgeable from a public page, so it's a real signal.
     assert auth.is_authenticated
+    assert any(
+        c.name.startswith("_shibsession_")
+        for c in auth.http.cookies.jar
+    )
 
 
 def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
-    html = KULASIS(auth).get("/student/la/top").text
-    assert len(html) > 100
-    assert "\u4eac\u90fd\u5927\u5b66" in html  # 京都大学
+    r = KULASIS(auth).get("/student/la/top")
+    _assert_authenticated_response(
+        r, expected_host="www.k.kyoto-u.ac.jp",
+        expected_path_prefix="/student/la/top",
+    )
+    # The student's own ID appears in the KULASIS header — a stronger
+    # identity check than "the page mentions Kyoto University".
+    assert os.environ["KUAUTH_USERNAME"] in r.text, (
+        "logged-in KULASIS top should echo the viewer's SPS-ID"
+    )
 
 
 def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
-    html = KULMS(auth).get("/portal").text
-    assert "Sakai" in html or "portal" in html.lower()
+    r = KULMS(auth).get("/portal")
+    _assert_authenticated_response(
+        r, expected_host="lms.gakusei.kyoto-u.ac.jp",
+        expected_path_prefix="/portal",
+    )
+    # Sakai stamps the viewer's user eid into the portal DOM; the
+    # pre-login gateway page never does.
+    assert os.environ["KUAUTH_USERNAME"] in r.text, (
+        "logged-in KULMS portal should echo the viewer's user id"
+    )
 
 
 def test_mykuline_secure_mypage(auth: KyotoUAuth) -> None:
     r = MyKULINE(auth).get("/opac/opac_secure/opac_mypage/")
-    assert r.status_code == 200
-    assert len(r.text) > 100
+    _assert_authenticated_response(
+        r, expected_host="kuline.kulib.kyoto-u.ac.jp",
+        expected_path_prefix="/opac/opac_secure/",
+    )
 
 
 def test_panda_portal_is_readable(auth: KyotoUAuth) -> None:
@@ -64,5 +131,10 @@ def test_panda_portal_is_readable(auth: KyotoUAuth) -> None:
     # unused. It shares the httpx.Client so hitting KULMS first (different
     # host) doesn't interfere with PandA's own session.
     r = PandA(auth).get("/portal")
-    assert r.status_code == 200
-    assert "PandA" in r.text or "Sakai" in r.text
+    _assert_authenticated_response(
+        r, expected_host="panda.ecs.kyoto-u.ac.jp",
+        expected_path_prefix="/portal",
+    )
+    assert os.environ["KUAUTH_USERNAME"] in r.text, (
+        "logged-in PandA portal should echo the viewer's user id"
+    )

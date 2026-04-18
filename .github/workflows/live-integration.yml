@@ -1,0 +1,56 @@
+name: Live integration
+
+# Runs the real IdP/SP tests once a day. Must NOT be wired to
+# ``pull_request`` — that would hand forks access to the secrets.
+on:
+  schedule:
+    - cron: '15 18 * * *'   # 18:15 UTC = 03:15 JST, off-peak
+  workflow_dispatch:         # manual trigger for debugging
+
+permissions:
+  contents: read
+
+# One live run at a time. ``cancel-in-progress: false`` lets the current
+# run finish (killing it mid-SAML could leave junk sessions).
+concurrency:
+  group: live-integration
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      KUAUTH_LIVE: '1'
+      KUAUTH_USERNAME: ${{ secrets.KUAUTH_USERNAME }}
+      KUAUTH_PASSWORD: ${{ secrets.KUAUTH_PASSWORD }}
+      KUAUTH_TOTP_SECRET: ${{ secrets.KUAUTH_TOTP_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv python install 3.12
+      - run: uv sync
+
+      # Fail fast if someone forgot to configure the secret, before we
+      # ever hit the IdP with an empty password.
+      - name: Verify secrets are present
+        run: |
+          for v in KUAUTH_USERNAME KUAUTH_PASSWORD KUAUTH_TOTP_SECRET; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is empty; configure it in repo secrets"
+              exit 1
+            fi
+          done
+
+      # --maxfail=1: stop at the first failure so a broken fixture can't
+      #   trigger a second login attempt against the IdP.
+      # --tb=short: suppresses ``locals`` in tracebacks so the password
+      #   can't leak into logs via frame-level repr.
+      - name: Run integration tests
+        run: uv run pytest tests/integration --tb=short --maxfail=1 -q

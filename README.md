@@ -1,5 +1,11 @@
 # kuauth
 
+[![PyPI version](https://img.shields.io/pypi/v/kuauth.svg)](https://pypi.org/project/kuauth/)
+[![Python](https://img.shields.io/pypi/pyversions/kuauth.svg)](https://pypi.org/project/kuauth/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Context7 Indexed](https://img.shields.io/badge/Context7-Indexed-047857)](https://context7.com/youseiushida/kuauth)
+[![Context7 llms.txt](https://img.shields.io/badge/Context7-llms.txt-047857)](https://context7.com/youseiushida/kuauth/llms.txt)
+
 京都大学の SSO (KULASIS / KULMS / MyKULINE / PandA) を単一のセッションで
 叩くための Python クライアント。ログイン後は各サービスを通常の
 `get()` / `post()` で呼び出せる。

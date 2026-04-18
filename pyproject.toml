@@ -13,6 +13,10 @@ dependencies = [
     "pyotp>=2.9",
 ]
 
+[project.urls]
+Repository = "https://github.com/youseiushida/kuauth"
+Issues = "https://github.com/youseiushida/kuauth/issues"
+
 [dependency-groups]
 dev = [
     "pytest>=8",

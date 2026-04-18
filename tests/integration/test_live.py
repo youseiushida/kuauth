@@ -98,15 +98,15 @@ def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
     # assert the generic ``/student/`` namespace. An unauthenticated hit
     # would bounce off-host to the IIMC IdP and be caught by the host
     # check in _assert_authenticated_response.
+    #
+    # KULASIS does not echo the SPS-ID verbatim in the landing HTML
+    # (unlike Sakai), so identity-level proof relies on the auth-gate
+    # predicates + host/path checks in the helper rather than a
+    # username string match.
     r = KULASIS(auth).get("/student/la/top")
     _assert_authenticated_response(
         r, expected_host="www.k.kyoto-u.ac.jp",
         expected_path_prefix="/student/",
-    )
-    # The student's own ID appears in the KULASIS header — a stronger
-    # identity check than "the page mentions Kyoto University".
-    assert os.environ["KUAUTH_USERNAME"] in r.text, (
-        "logged-in KULASIS top should echo the viewer's SPS-ID"
     )
 
 

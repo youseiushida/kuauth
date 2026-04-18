@@ -50,11 +50,6 @@ def test_no_otp_source_raises():
         a._resolve_otp()
 
 
-def test_is_authenticated_starts_false():
-    a = _auth()
-    assert a.is_authenticated is False
-
-
 def test_context_manager_closes_client():
     client = httpx.Client()
     with KyotoUAuth("u", "p", http=client) as a:

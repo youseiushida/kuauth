@@ -1,20 +1,15 @@
-"""KyotoUAuth — password + OTP login against auth.iimc.kyoto-u.ac.jp."""
+"""KyotoUAuth — credentials + shared httpx.Client holder for Kyoto-U SSO services."""
 
 from __future__ import annotations
 
-import logging
 import ssl
 from typing import Callable, Self
 
 import httpx
 import pyotp
 
-from kuauth import _parsers, _saml
-from kuauth.exceptions import AuthenticationError, OTPRequiredError
+from kuauth.exceptions import OTPRequiredError
 
-log = logging.getLogger("kuauth.auth")
-
-PORTAL_ENTRY = "https://student.iimc.kyoto-u.ac.jp/login.html"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 kuauth/0.1.0"
@@ -32,20 +27,30 @@ def _build_ssl_context() -> ssl.SSLContext:
 
 
 class KyotoUAuth:
-    """Holds a shared httpx.Client authenticated against the Kyoto-U IdP.
+    """Holds credentials and a shared ``httpx.Client`` for the Kyoto-U SPs.
 
-    OTP is resolved from one of three sources, in priority order:
-    ``onetime_password`` (a pre-generated 6-digit code) >
+    No network is issued at construction or by any method on this class —
+    authentication is lazy and driven by the SP clients (``KULASIS``,
+    ``KULMS``, ``MyKULINE``, ``PandA``). Whether OTP is required depends on
+    which SP is called: KULASIS/KULMS route through the SimpleSAMLphp IdP at
+    ``auth.iimc.kyoto-u.ac.jp`` and demand OTP; MyKULINE goes through the
+    Java Shib IdP at ``authidp1.iimc.kyoto-u.ac.jp`` (no OTP); PandA uses
+    ECS CAS (no OTP). If you only use non-OTP SPs, omit ``totp_secret``.
+
+    OTP sources, in priority order if multiple are set:
+    ``onetime_password`` (pre-generated 6-digit code) >
     ``totp_secret`` (base32 seed, code generated on demand via pyotp) >
     ``otp_callback`` (zero-arg callable returning a code).
 
-    Not thread-safe. Use one instance per thread; sharing a single instance
-    across threads can race on ``login()`` and double-POST credentials to
-    the IdP (the Kyoto-U account lockout threshold is low).
+    Not thread-safe. The shared ``httpx.Client`` and the per-SP
+    ``_sp_ready`` flags are mutable; the first call that walks the IdP can
+    race if two threads hit the same SP concurrently (double-POST
+    credentials — Kyoto-U's account lockout threshold is low). Use one
+    ``KyotoUAuth`` per thread, or serialize SP access externally.
 
     Usage::
 
-        auth = KyotoUAuth(user, password, totp_secret=secret).login()
+        auth = KyotoUAuth(user, password, totp_secret=secret)
         KULMS(auth).get("/portal").text
     """
 
@@ -75,15 +80,10 @@ class KyotoUAuth:
                 verify=_build_ssl_context(),
             )
         self._http = http
-        self._logged_in = False
 
     @property
     def http(self) -> httpx.Client:
         return self._http
-
-    @property
-    def is_authenticated(self) -> bool:
-        return self._logged_in
 
     @property
     def username(self) -> str:
@@ -92,46 +92,6 @@ class KyotoUAuth:
     @property
     def password(self) -> str:
         return self._password
-
-    def login(self) -> Self:
-        if self._logged_in:
-            return self
-        r = self._http.get(PORTAL_ENTRY)
-        r.raise_for_status()
-        r = self._follow_meta_refresh(r)
-        r = self._submit_password(r)
-        r = self._follow_meta_refresh(r)
-        if _parsers.contains_authselect(r.text):
-            r = self._follow_authselect(r)
-            r = self._follow_meta_refresh(r)
-        # After password + optional authselect we must be at the OTP form. If
-        # the login form is still showing, the password was rejected — raise
-        # before _submit_otp would post the OTP into a login.cgi form.
-        if not _parsers.contains_otp_form(r.text):
-            if _parsers.contains_login_form(r.text):
-                raise AuthenticationError("password rejected by IdP")
-            raise AuthenticationError(
-                "unexpected state after password (no OTP form)"
-            )
-        r = self._submit_otp(r)
-        r = self._follow_meta_refresh(r)
-        # After OTP we expect the SAML autosubmit. Still on OTP form ⇒ OTP
-        # rejected.
-        if not _parsers.contains_saml_autosubmit(r.text):
-            if _parsers.contains_otp_form(r.text):
-                raise AuthenticationError("OTP rejected by IdP")
-            raise AuthenticationError(
-                "unexpected state after OTP (no SAML autosubmit)"
-            )
-        r = _saml.post_saml_autosubmit(self._http, r.text, base_url=str(r.url))
-        r = self._follow_meta_refresh(r)
-        r.raise_for_status()
-        if not self._has_shibsession():
-            raise AuthenticationError(
-                "login completed but no _shibsession_* cookie was set"
-            )
-        self._logged_in = True
-        return self
 
     def close(self) -> None:
         if self._owns_http:
@@ -142,24 +102,6 @@ class KyotoUAuth:
 
     def __exit__(self, *_exc) -> None:
         self.close()
-
-    def _submit_password(self, r: httpx.Response) -> httpx.Response:
-        form = _parsers.parse_login_form(r.text, base_url=str(r.url))
-        data = dict(form["fields"])
-        data["username"] = self._username
-        data["password"] = self._password
-        return self._http.post(form["action"], data=data)
-
-    def _follow_authselect(self, r: httpx.Response) -> httpx.Response:
-        link = _parsers.parse_authselect_link(r.text, base_url=str(r.url))
-        return self._http.get(link)
-
-    def _submit_otp(self, r: httpx.Response) -> httpx.Response:
-        form = _parsers.parse_otp_form(r.text, base_url=str(r.url))
-        data = dict(form["fields"])
-        data["username"] = self._username
-        data["password"] = self._resolve_otp()
-        return self._http.post(form["action"], data=data)
 
     def _resolve_otp(self) -> str:
         if self._onetime_password:
@@ -172,27 +114,3 @@ class KyotoUAuth:
             "OTP required but no onetime_password, totp_secret, or otp_callback configured"
         )
 
-    def _has_shibsession(self) -> bool:
-        # `_shibsession_<hash>` — the hash is SP-config-dependent, so prefix
-        # match is deliberate; we only need "some SP consumed the assertion".
-        for cookie in self._http.cookies.jar:
-            if cookie.name.startswith("_shibsession_"):
-                return True
-        return False
-
-    def _follow_meta_refresh(
-        self, r: httpx.Response, *, max_hops: int = 10
-    ) -> httpx.Response:
-        for _ in range(max_hops):
-            target = _parsers.extract_meta_refresh_url(
-                r.text, base_url=str(r.url)
-            )
-            if not target:
-                return r
-            r = self._http.get(target)
-        # The last GET may have landed on the settled page; accept it if so.
-        if not _parsers.extract_meta_refresh_url(r.text, base_url=str(r.url)):
-            return r
-        raise AuthenticationError(
-            f"meta-refresh chain did not settle within {max_hops} hops"
-        )

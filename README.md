@@ -8,8 +8,8 @@
 [![Context7 llms.txt](https://img.shields.io/badge/Context7-llms.txt-047857)](https://context7.com/youseiushida/kuauth/llms.txt)
 
 京都大学の SSO (KULASIS / KULMS / MyKULINE / PandA) を単一のセッションで
-叩くための Python クライアント。ログイン後は各サービスを通常の
-`get()` / `post()` で呼び出せる。
+叩くための Python クライアント。初回の `get()` / `post()` 時に必要な IdP
+ウォークが遅延実行され、それ以降は通常の HTTP クライアントとして使える。
 
 ## インストール
 
@@ -28,7 +28,7 @@ auth = KyotoUAuth(
     # onetime_password="424242",             # 手元の 6 桁コードを 1 回だけ使う
     otp_callback=lambda: input("OTP: "),     # 対話的スクリプト
     # totp_secret="JBSWY3DPEHPK3PXP",        # cron / CI など無人実行
-).login()
+)
 
 print(KULASIS(auth).get("/student/u/t/top").text)           # 教務 (Shift_JIS 自動デコード)
 print(KULMS(auth).get("/portal").text)                      # Sakai LMS
@@ -40,7 +40,18 @@ auth.close()
 
 ## 認証方法
 
-OTP の渡し方は 3 通り。
+OTP が必要かどうかはアクセスする SP によって変わる:
+
+| Service  | Base URL                                  | 認証経路 | OTP |
+| -------- | ----------------------------------------- | -------- | --- |
+| KULASIS  | `https://www.k.kyoto-u.ac.jp`             | auth.iimc (SimpleSAMLphp) | 必要 |
+| KULMS    | `https://lms.gakusei.kyoto-u.ac.jp`       | auth.iimc (SimpleSAMLphp) | 必要 |
+| MyKULINE | `https://kuline.kulib.kyoto-u.ac.jp`      | authidp1 (Java Shib IdP)  | 不要 |
+| PandA    | `https://panda.ecs.kyoto-u.ac.jp`         | ECS CAS                   | 不要 |
+
+OTP は実際に OTP フォームに到達した時点で初めて解決される。つまり
+MyKULINE や PandA しか使わないスクリプトでは `totp_secret` 等の指定は
+省略できる。KULASIS / KULMS を叩く場合のみ、下記のいずれかを渡す:
 
 | 引数 | 用途 |
 | --- | --- |
@@ -52,18 +63,6 @@ TOTP シークレットは[京大の多要素認証マニュアル](https://www.
 に従って認証アプリを登録する際の QR に埋め込まれた `otpauth://totp/...?secret=XXXX&...`
 の `secret` パラメータ。登録後は QR が再表示されないので、登録画面で控えておくか、
 一度アプリを解除して再登録する。
-
-## サービス一覧
-
-| Service  | Base URL                                  | 認証 |
-| -------- | ----------------------------------------- | ---- |
-| KULASIS  | `https://www.k.kyoto-u.ac.jp`             | IIMC Shibboleth |
-| KULMS    | `https://lms.gakusei.kyoto-u.ac.jp`       | IIMC Shibboleth |
-| MyKULINE | `https://kuline.kulib.kyoto-u.ac.jp`      | IIMC Shibboleth |
-| PandA    | `https://panda.ecs.kyoto-u.ac.jp`         | ECS CAS (OTP 不要) |
-
-PandA は IIMC の Shibboleth ではなく ECS の CAS サーバで認証するため、
-`KyotoUAuth` の `totp_secret` 等は使用されない (`username` / `password` のみ)。
 
 KUMOI (Microsoft 365) はテナント admin consent 要でスコープ外。
 
@@ -80,6 +79,9 @@ uv run pytest tests/replay -q    # respx でモックした E2E
 
 実 IdP と実サービスを叩く統合テストは `KUAUTH_LIVE=1` を指定しない限り
 すべて skip される。実行するには以下の環境変数をセットする:
+
+`KUAUTH_TOTP_SECRET` は KULASIS / KULMS のテストに必要で、省略すると
+`auth_with_totp` を使うテストだけが skip される (MyKULINE / PandA は走る)。
 
 ```bash
 # bash / Git Bash

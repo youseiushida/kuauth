@@ -1,7 +1,7 @@
 # Test fixtures
 
 Sanitized HTML/JSON snippets that mirror the real SP/IdP responses for use in
-`tests/replay/`. These are **hand-crafted** to match the structural elements
+`tests/replay/`. These are hand-crafted to match the structural elements
 our parsers need; bodies were not available in the captured HARs (Chrome
 exports omit them by default).
 

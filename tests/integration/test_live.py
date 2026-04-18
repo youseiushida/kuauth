@@ -1,10 +1,15 @@
 """Live integration tests — require real credentials.
 
-Gated by ``KUAUTH_LIVE=1`` (handled in conftest.py). Additionally requires:
+Gated by ``KUAUTH_LIVE=1`` (handled in conftest.py). Required env:
 
 - ``KUAUTH_USERNAME`` — SPS ID
 - ``KUAUTH_PASSWORD``
-- ``KUAUTH_TOTP_SECRET`` — base32 TOTP secret enrolled for the account
+
+Optional:
+
+- ``KUAUTH_TOTP_SECRET`` — base32 TOTP secret. Only required for SPs that
+  route through the OTP IdP (KULASIS, KULMS). Tests using ``auth_with_totp``
+  skip when unset; tests using ``auth_no_totp`` run regardless.
 """
 
 from __future__ import annotations
@@ -57,21 +62,45 @@ def _fetch_with_upstream_retry(
 pytestmark = pytest.mark.integration
 
 
-def _creds() -> tuple[str, str, str]:
+def _creds() -> tuple[str, str, str | None]:
+    """Return (username, password, totp_secret-or-None).
+
+    ``KUAUTH_TOTP_SECRET`` is optional post-refactor — MyKULINE and PandA
+    don't need it. Tests that do need it depend on ``auth_with_totp``,
+    which skips when it's absent.
+    """
     try:
         return (
             os.environ["KUAUTH_USERNAME"],
             os.environ["KUAUTH_PASSWORD"],
-            os.environ["KUAUTH_TOTP_SECRET"],
+            os.environ.get("KUAUTH_TOTP_SECRET"),
         )
     except KeyError as e:
         pytest.skip(f"missing env var: {e.args[0]}")
 
 
 @pytest.fixture(scope="module")
-def auth() -> KyotoUAuth:
+def auth_with_totp() -> KyotoUAuth:
+    """For SPs that route through the OTP-required SimpleSAMLphp IdP
+    (KULASIS, KULMS). Skips if ``KUAUTH_TOTP_SECRET`` is not set."""
     user, pw, totp = _creds()
-    a = KyotoUAuth(user, pw, totp_secret=totp).login()
+    if totp is None:
+        pytest.skip("KUAUTH_TOTP_SECRET not set")
+    a = KyotoUAuth(user, pw, totp_secret=totp)
+    yield a
+    a.close()
+
+
+@pytest.fixture(scope="module")
+def auth_no_totp() -> KyotoUAuth:
+    """For SPs that don't route through the OTP IdP (MyKULINE, PandA).
+
+    Using this fixture proves those SPs don't require ``totp_secret`` —
+    that's the motivation for the lazy-login refactor. ``KyotoUAuth`` is
+    constructed without an OTP source; ``_resolve_otp`` is never called.
+    """
+    user, pw, _ = _creds()
+    a = KyotoUAuth(user, pw)
     yield a
     a.close()
 
@@ -119,17 +148,7 @@ def _assert_authenticated_response(
     assert len(body) > 500, f"body suspiciously short ({len(body)} chars)"
 
 
-def test_login_obtains_session(auth: KyotoUAuth) -> None:
-    # ``is_authenticated`` flips only after a ``_shibsession_*`` cookie is
-    # seen — this isn't forgeable from a public page, so it's a real signal.
-    assert auth.is_authenticated
-    assert any(
-        c.name.startswith("_shibsession_")
-        for c in auth.http.cookies.jar
-    )
-
-
-def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
+def test_kulasis_top_is_readable(auth_with_totp: KyotoUAuth) -> None:
     # KULASIS rewrites ``/student/la/top`` into a faculty-specific path
     # such as ``/student/u/t/top?server=europa`` post-login, so we only
     # assert the generic ``/student/`` namespace. An unauthenticated hit
@@ -140,15 +159,17 @@ def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
     # (unlike Sakai), so identity-level proof relies on the auth-gate
     # predicates + host/path checks in the helper rather than a
     # username string match.
-    r = _fetch_with_upstream_retry(lambda: KULASIS(auth).get("/student/la/top"))
+    r = _fetch_with_upstream_retry(
+        lambda: KULASIS(auth_with_totp).get("/student/la/top")
+    )
     _assert_authenticated_response(
         r, expected_host="www.k.kyoto-u.ac.jp",
         expected_path_prefix="/student/",
     )
 
 
-def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
-    r = _fetch_with_upstream_retry(lambda: KULMS(auth).get("/portal"))
+def test_kulms_portal_is_readable(auth_with_totp: KyotoUAuth) -> None:
+    r = _fetch_with_upstream_retry(lambda: KULMS(auth_with_totp).get("/portal"))
     _assert_authenticated_response(
         r, expected_host="lms.gakusei.kyoto-u.ac.jp",
         expected_path_prefix="/portal",
@@ -160,13 +181,17 @@ def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
     )
 
 
-def test_mykuline_us_info_is_readable(auth: KyotoUAuth) -> None:
+def test_mykuline_us_info_is_readable(auth_no_totp: KyotoUAuth) -> None:
     # ``/opac/us_info/`` is the logged-in "利用者情報" page. Unlike the initial
     # ``/opac/opac_secure/opac_search/`` entry, it does not re-trigger the
     # securelogin auto-submit — a direct GET after ``_ensure_session`` has
     # established the Django session returns the real page.
+    #
+    # Uses ``auth_no_totp`` deliberately: MyKULINE routes through authidp1,
+    # which only needs j_username/j_password. If this test passes without
+    # ``KUAUTH_TOTP_SECRET`` in the env, the lazy-login refactor is working.
     r = _fetch_with_upstream_retry(
-        lambda: MyKULINE(auth).get("/opac/us_info/?lang=0")
+        lambda: MyKULINE(auth_no_totp).get("/opac/us_info/?lang=0")
     )
     _assert_authenticated_response(
         r, expected_host="kuline.kulib.kyoto-u.ac.jp",
@@ -179,11 +204,10 @@ def test_mykuline_us_info_is_readable(auth: KyotoUAuth) -> None:
     )
 
 
-def test_panda_portal_is_readable(auth: KyotoUAuth) -> None:
-    # PandA uses ECS CAS — ``auth`` only supplies username/password; OTP is
-    # unused. It shares the httpx.Client so hitting KULMS first (different
-    # host) doesn't interfere with PandA's own session.
-    r = _fetch_with_upstream_retry(lambda: PandA(auth).get("/portal"))
+def test_panda_portal_is_readable(auth_no_totp: KyotoUAuth) -> None:
+    # PandA uses ECS CAS — only username/password. Uses ``auth_no_totp``
+    # to pin that OTP is not required for this SP.
+    r = _fetch_with_upstream_retry(lambda: PandA(auth_no_totp).get("/portal"))
     _assert_authenticated_response(
         r, expected_host="panda.ecs.kyoto-u.ac.jp",
         expected_path_prefix="/portal",

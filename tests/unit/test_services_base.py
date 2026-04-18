@@ -31,7 +31,6 @@ def _ready_service(cls, responses) -> ShibbolethSPService:
     auth = _auth_with_mock(responses)
     svc = cls(auth)
     svc._sp_ready = True
-    auth._logged_in = True
     return svc
 
 
@@ -65,7 +64,6 @@ def test_post_forwards_body():
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     auth = KyotoUAuth("u", "p", http=client)
-    auth._logged_in = True
     svc = _FakeService(auth)
     svc._sp_ready = True
 

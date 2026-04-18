@@ -33,7 +33,7 @@ class MyKULINE(ShibbolethSPService):
         return self._follow_securelogin(r)
 
     def _follow_securelogin(
-        self, r: httpx.Response, *, max_hops: int = 3
+        self, r: httpx.Response, *, max_hops: int = 6
     ) -> httpx.Response:
         # Django OPAC wraps every secure page with an auto-submit form
         # (id="securelogin") that JS POSTs back to `rurl`. httpx doesn't run

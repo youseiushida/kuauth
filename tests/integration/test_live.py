@@ -112,6 +112,7 @@ def _assert_authenticated_response(
         "SSP authselect picker": _parsers.contains_authselect(body),
         "SAML auto-submit (stuck mid-flow)": _parsers.contains_saml_autosubmit(body),
         "ECS CAS login form": _parsers.contains_cas_login_form(body),
+        "MyKULINE EPPN/securelogin form": _parsers.contains_eppn_form(body),
     }
     hit = [name for name, flagged in gates.items() if flagged]
     assert not hit, f"response still contains auth gate(s): {hit}"

@@ -10,12 +10,48 @@ Gated by ``KUAUTH_LIVE=1`` (handled in conftest.py). Additionally requires:
 from __future__ import annotations
 
 import os
+import re
+import time
+from typing import Callable
 
 import httpx
 import pytest
 
 from kuauth import KyotoUAuth, KULASIS, KULMS, MyKULINE, PandA
 from kuauth import _parsers
+from kuauth.exceptions import SPAccessError
+
+
+_UPSTREAM_5XX = re.compile(r"HTTP 5\d\d")
+
+
+def _fetch_with_upstream_retry(
+    call: Callable[[], httpx.Response],
+    *,
+    attempts: int = 2,
+    backoff: float = 5.0,
+) -> httpx.Response:
+    """Invoke ``call`` with one retry on transient upstream 5xx.
+
+    When the Kyoto-U SPs bounce a request with 5xx (KULMS Sakai behind a
+    proxy does this occasionally), the first attempt raises
+    ``SPAccessError("... HTTP 5xx")``. We retry once after ``backoff``
+    seconds; if it still fails with 5xx, ``pytest.skip`` — persistent
+    upstream trouble is not a library regression and shouldn't page us.
+
+    ``attempts`` counts total tries (first + retries).
+    """
+    last: SPAccessError | None = None
+    for i in range(attempts):
+        try:
+            return call()
+        except SPAccessError as e:
+            if not _UPSTREAM_5XX.search(str(e)):
+                raise
+            last = e
+            if i < attempts - 1:
+                time.sleep(backoff)
+    pytest.skip(f"upstream 5xx after {attempts} attempts: {last}")
 
 
 pytestmark = pytest.mark.integration
@@ -103,7 +139,7 @@ def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
     # (unlike Sakai), so identity-level proof relies on the auth-gate
     # predicates + host/path checks in the helper rather than a
     # username string match.
-    r = KULASIS(auth).get("/student/la/top")
+    r = _fetch_with_upstream_retry(lambda: KULASIS(auth).get("/student/la/top"))
     _assert_authenticated_response(
         r, expected_host="www.k.kyoto-u.ac.jp",
         expected_path_prefix="/student/",
@@ -111,7 +147,7 @@ def test_kulasis_top_is_readable(auth: KyotoUAuth) -> None:
 
 
 def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
-    r = KULMS(auth).get("/portal")
+    r = _fetch_with_upstream_retry(lambda: KULMS(auth).get("/portal"))
     _assert_authenticated_response(
         r, expected_host="lms.gakusei.kyoto-u.ac.jp",
         expected_path_prefix="/portal",
@@ -124,7 +160,9 @@ def test_kulms_portal_is_readable(auth: KyotoUAuth) -> None:
 
 
 def test_mykuline_secure_mypage(auth: KyotoUAuth) -> None:
-    r = MyKULINE(auth).get("/opac/opac_secure/opac_mypage/")
+    r = _fetch_with_upstream_retry(
+        lambda: MyKULINE(auth).get("/opac/opac_secure/opac_mypage/")
+    )
     _assert_authenticated_response(
         r, expected_host="kuline.kulib.kyoto-u.ac.jp",
         expected_path_prefix="/opac/opac_secure/",
@@ -135,7 +173,7 @@ def test_panda_portal_is_readable(auth: KyotoUAuth) -> None:
     # PandA uses ECS CAS — ``auth`` only supplies username/password; OTP is
     # unused. It shares the httpx.Client so hitting KULMS first (different
     # host) doesn't interfere with PandA's own session.
-    r = PandA(auth).get("/portal")
+    r = _fetch_with_upstream_retry(lambda: PandA(auth).get("/portal"))
     _assert_authenticated_response(
         r, expected_host="panda.ecs.kyoto-u.ac.jp",
         expected_path_prefix="/portal",

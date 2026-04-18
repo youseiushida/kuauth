@@ -39,6 +39,10 @@ class KyotoUAuth:
     ``totp_secret`` (base32 seed, code generated on demand via pyotp) >
     ``otp_callback`` (zero-arg callable returning a code).
 
+    Not thread-safe. Use one instance per thread; sharing a single instance
+    across threads can race on ``login()`` and double-POST credentials to
+    the IdP (the Kyoto-U account lockout threshold is low).
+
     Usage::
 
         auth = KyotoUAuth(user, password, totp_secret=secret).login()
@@ -169,6 +173,8 @@ class KyotoUAuth:
         )
 
     def _has_shibsession(self) -> bool:
+        # `_shibsession_<hash>` — the hash is SP-config-dependent, so prefix
+        # match is deliberate; we only need "some SP consumed the assertion".
         for cookie in self._http.cookies.jar:
             if cookie.name.startswith("_shibsession_"):
                 return True
@@ -184,4 +190,9 @@ class KyotoUAuth:
             if not target:
                 return r
             r = self._http.get(target)
-        return r
+        # The last GET may have landed on the settled page; accept it if so.
+        if not _parsers.extract_meta_refresh_url(r.text, base_url=str(r.url)):
+            return r
+        raise AuthenticationError(
+            f"meta-refresh chain did not settle within {max_hops} hops"
+        )

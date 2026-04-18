@@ -29,6 +29,9 @@ class _SPService:
 
     Subclasses override ``BASE_URL`` and ``ENTRY_PATH`` and implement
     ``_ensure_session`` to perform whatever login the SP requires.
+
+    Not thread-safe. ``_sp_ready`` and the underlying ``httpx.Client`` are
+    shared mutable state; use one service instance per thread.
     """
 
     BASE_URL: ClassVar[str]
@@ -75,7 +78,12 @@ class _SPService:
             if not target:
                 return r
             r = self.http.get(target)
-        return r
+        # The last GET may have landed on the settled page; accept it if so.
+        if not _parsers.extract_meta_refresh_url(r.text, base_url=str(r.url)):
+            return r
+        raise SPAccessError(
+            f"{type(self).__name__}: meta-refresh chain did not settle within {max_hops} hops"
+        )
 
 
 class ShibbolethSPService(_SPService):

@@ -252,8 +252,11 @@ def contains_localstorage_form(html: str) -> bool:
     return "shib_idp_ls_success" in html
 
 
+_SAML_RESPONSE_ATTR_RE = re.compile(r'name\s*=\s*["\']?SAMLResponse\b')
+
+
 def contains_saml_autosubmit(html: str) -> bool:
-    return 'name="SAMLResponse"' in html or "name='SAMLResponse'" in html
+    return bool(_SAML_RESPONSE_ATTR_RE.search(html))
 
 
 def contains_eppn_form(html: str) -> bool:

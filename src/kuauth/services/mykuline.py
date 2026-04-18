@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 
 from kuauth import _parsers
+from kuauth.exceptions import SPAccessError
 from kuauth.services._base import ShibbolethSPService
 
 
@@ -47,4 +48,9 @@ class MyKULINE(ShibbolethSPService):
                 headers={"Referer": str(r.url)},
             )
             r.raise_for_status()
-        return r
+        # The last POST may have landed on real content; accept it if so.
+        if not _parsers.contains_eppn_form(r.text):
+            return r
+        raise SPAccessError(
+            f"MyKULINE: securelogin chain did not settle within {max_hops} hops"
+        )

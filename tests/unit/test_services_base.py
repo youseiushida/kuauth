@@ -15,6 +15,11 @@ class _FakeService(ShibbolethSPService):
     ENTRY_PATH = "/entry"
 
 
+class _SubdomainService(ShibbolethSPService):
+    BASE_URL = "https://app.example.test"
+    ENTRY_PATH = "/entry"
+
+
 def _auth_with_mock(responses: dict[tuple[str, str], httpx.Response]) -> KyotoUAuth:
     def handler(req: httpx.Request) -> httpx.Response:
         key = (req.method, str(req.url))
@@ -91,6 +96,23 @@ def test_get_accepts_absolute_url():
     assert r.text == "z"
 
 
+def test_cookies_returns_service_scoped_detached_jar():
+    svc = _ready_service(_SubdomainService, {})
+    svc.http.cookies.set("subdomain", "SUB", domain="app.example.test", path="/")
+    svc.http.cookies.set("parent", "PARENT", domain="example.test", path="/")
+    svc.http.cookies.set("other", "OTHER", domain="other.example.test", path="/")
+    svc.http.cookies.set("idp", "IDP", domain="auth.example.test", path="/")
+
+    cookies = svc.cookies()
+
+    assert dict(cookies.items()) == {
+        "subdomain": "SUB",
+        "parent": "PARENT",
+    }
+    cookies.set("local", "ONLY_COPY", domain="app.example.test", path="/")
+    assert "local" not in dict(svc.http.cookies.items())
+
+
 def test_kulasis_get_decodes_sjis():
     sjis_bytes = "京大".encode("cp932")
     svc = _ready_service(
@@ -122,3 +144,20 @@ def test_get_triggers_ensure_session_when_not_ready(monkeypatch):
     # Second call is a no-op (already ready), ensure_session still called (but sees _sp_ready)
     svc.get("/x")
     assert calls["n"] == 2
+
+
+def test_cookies_triggers_ensure_session_when_not_ready(monkeypatch):
+    svc = _FakeService(_auth_with_mock({}))
+    calls = {"n": 0}
+
+    def fake_ensure(self):
+        calls["n"] += 1
+        self.http.cookies.set("session", "READY", domain="example.test", path="/")
+        self._sp_ready = True
+
+    monkeypatch.setattr(_FakeService, "_ensure_session", fake_ensure)
+
+    cookies = svc.cookies()
+
+    assert calls["n"] == 1
+    assert dict(cookies.items()) == {"session": "READY"}

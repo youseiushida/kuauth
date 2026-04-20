@@ -19,6 +19,8 @@ server and lives in its own module.
 
 from __future__ import annotations
 
+from copy import copy
+from http.cookiejar import CookieJar
 from typing import ClassVar
 from urllib.parse import urlparse
 
@@ -69,6 +71,16 @@ class _SPService:
         self._ensure_session()
         return self.http.request(method, self._resolve(path_or_url), **kwargs)
 
+    def cookies(self) -> httpx.Cookies:
+        """Ensure session, then return a detached cookie jar for this service."""
+        self._ensure_session()
+        jar = CookieJar()
+        host = urlparse(self.BASE_URL).hostname or ""
+        for c in self.http.cookies.jar:
+            if self._cookie_matches_host(c.domain or "", host):
+                jar.set_cookie(copy(c))
+        return httpx.Cookies(jar)
+
     def _resolve(self, path_or_url: str) -> str:
         if path_or_url.startswith(("http://", "https://")):
             return path_or_url
@@ -93,6 +105,13 @@ class _SPService:
         raise SPAccessError(
             f"{type(self).__name__}: meta-refresh chain did not settle within {max_hops} hops"
         )
+
+    @staticmethod
+    def _cookie_matches_host(cookie_domain: str, host: str) -> bool:
+        cookie_host = cookie_domain.lstrip(".")
+        if not cookie_host or not host:
+            return False
+        return cookie_host == host or host.endswith("." + cookie_host)
 
 
 class ShibbolethSPService(_SPService):
@@ -138,13 +157,10 @@ class ShibbolethSPService(_SPService):
         for c in self.http.cookies.jar:
             if not c.name.startswith("_shibsession_"):
                 continue
-            cookie_host = (c.domain or "").lstrip(".")
-            if not cookie_host:
-                continue
             # Exact match is the common case (SP sets cookie on its own host).
             # Suffix match handles the RFC-6265 "Domain=parent" case where
             # the cookie would still be sent to ``host`` — defense in depth.
-            if cookie_host == host or host.endswith("." + cookie_host):
+            if self._cookie_matches_host(c.domain or "", host):
                 return True
         return False
 

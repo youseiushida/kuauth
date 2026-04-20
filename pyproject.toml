@@ -1,6 +1,6 @@
 [project]
 name = "kuauth"
-version = "0.2.1"
+version = "0.2.2"
 description = "Unified Python client for Kyoto University SSO services (KULASIS / KULMS / MyKULINE / PandA)."
 readme = "README.md"
 requires-python = ">=3.12"

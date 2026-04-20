@@ -1,13 +1,12 @@
 # kuauth
 
 [![PyPI version](https://img.shields.io/pypi/v/kuauth.svg)](https://pypi.org/project/kuauth/)
-[![Python](https://img.shields.io/pypi/pyversions/kuauth.svg)](https://pypi.org/project/kuauth/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Live integration](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml/badge.svg?event=schedule)](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml)
 [![Context7 Indexed](https://img.shields.io/badge/Context7-Indexed-047857)](https://context7.com/youseiushida/kuauth)
 [![Context7 llms.txt](https://img.shields.io/badge/Context7-llms.txt-047857)](https://context7.com/youseiushida/kuauth/llms.txt)
 
-京都大学の SSO (KULASIS / KULMS / MyKULINE / PandA) を単一のセッションで叩くための Python クライアントです。初回の `get()` / `post()` 時に必要な IdP ウォークが遅延実行され、それ以降は通常の HTTP クライアントとして使えます。
+京都大学の SSO (KULASIS / KULMS / MyKULINE / PandA) を単一のセッションで叩くための Python クライアントです。初回のサービスアクセス時に必要な IdP ウォークが遅延実行され、それ以降は通常の HTTP クライアントとして使えます。
 
 ## インストール
 
@@ -28,7 +27,7 @@ auth = KyotoUAuth(
     # totp_secret="JBSWY3DPEHPK3PXP",        # cron / CI など無人実行
 )
 
-print(KULASIS(auth).get("/student/u/t/top").text)           # 教務 (Shift_JIS 自動デコード)
+print(KULASIS(auth).get("/student/la/top").text)            # 教務 (Shift_JIS 自動デコード)
 print(KULMS(auth).get("/portal").text)                      # Sakai LMS
 print(MyKULINE(auth).get("/opac/opac_search/").text)        # 図書館 OPAC
 print(PandA(auth).get("/portal").text)                      # 旧 LMS (ECS CAS)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from kuauth.auth import KyotoUAuth
+from kuauth.auth import DEFAULT_USER_AGENT, KyotoUAuth
 from kuauth.exceptions import OTPRequiredError
 
 
@@ -64,3 +64,12 @@ def test_owned_client_closes_on_exit():
     with a:
         pass
     assert client.is_closed
+
+
+def test_default_user_agent_does_not_self_identify():
+    a = KyotoUAuth("u", "p")
+    try:
+        assert a.http.headers["User-Agent"] == DEFAULT_USER_AGENT
+        assert "kuauth" not in DEFAULT_USER_AGENT.lower()
+    finally:
+        a.close()

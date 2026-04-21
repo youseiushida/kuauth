@@ -12,7 +12,7 @@ from kuauth.exceptions import OTPRequiredError
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 kuauth/0.2.2"
+    "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 )
 
 
@@ -113,4 +113,3 @@ class KyotoUAuth:
         raise OTPRequiredError(
             "OTP required but no onetime_password, totp_secret, or otp_callback configured"
         )
-

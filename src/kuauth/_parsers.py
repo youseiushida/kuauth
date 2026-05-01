@@ -15,6 +15,22 @@ def _soup(html: str) -> BeautifulSoup:
     return BeautifulSoup(html, "lxml")
 
 
+def _coerce_str(value: object, default: str = "") -> str:
+    """Collapse a bs4 attribute value to a single string.
+
+    bs4 4.13+ types ``Tag.get(name)`` as ``str | list[str] | None`` because
+    some HTML attrs (``class``, ``rel``) are space-separated multi-value.
+    Every attr we read in this module is single-valued, so threading the
+    union through every call site is pure noise. This helper coerces at
+    the boundary, joining lists if one slips through.
+    """
+    if value is None:
+        return default
+    if isinstance(value, list):
+        return " ".join(str(v) for v in value)
+    return str(value)
+
+
 def _collect_inputs(form: Tag) -> dict[str, str]:
     """Collect form inputs into a dict, mirroring browser submission rules.
 
@@ -24,17 +40,18 @@ def _collect_inputs(form: Tag) -> dict[str, str]:
     """
     fields: dict[str, str] = {}
     for inp in form.find_all("input"):
-        name = inp.get("name")
-        if not name:
+        raw_name = inp.get("name")
+        if not raw_name:
             continue
-        inp_type = (inp.get("type") or "text").lower()
+        name = _coerce_str(raw_name)
+        inp_type = _coerce_str(inp.get("type"), "text").lower()
         if inp_type in ("checkbox", "radio"):
             if inp.has_attr("checked"):
-                fields[name] = inp.get("value", "on")
+                fields[name] = _coerce_str(inp.get("value"), "on")
             continue
         if inp_type == "submit":
             continue
-        fields[name] = inp.get("value", "")
+        fields[name] = _coerce_str(inp.get("value"), "")
     return fields
 
 
@@ -53,14 +70,14 @@ def _find_form(
 
 
 def _resolve_action(form: Tag, base_url: str | None) -> str:
-    action = form.get("action", "")
+    action = _coerce_str(form.get("action"))
     if base_url:
         return urljoin(base_url, action) if action else base_url
     return action
 
 
 def _action_basename(form: Tag) -> str:
-    action = form.get("action", "") or ""
+    action = _coerce_str(form.get("action"))
     return action.rsplit("/", 1)[-1].split("?", 1)[0]
 
 
@@ -119,13 +136,12 @@ def parse_authselect_link(
     soup = _soup(html)
     for method in prefer:
         # Bind ``method`` explicitly so the lambda captures the iteration's
-        # value rather than the late-binding loop variable. (BeautifulSoup
-        # invokes the predicate immediately during the same iteration, so
-        # the bug doesn't trigger today, but the explicit bind keeps
-        # tooling like ``ruff B023`` quiet and the intent obvious.)
-        a = soup.find("a", href=lambda h, m=method: h and m in h)
+        # value rather than the late-binding loop variable (silences ruff
+        # B023). ``bool(h)`` collapses the predicate to ``bool`` so it
+        # matches bs4's expected ``_NullableStringMatchFunction`` signature.
+        a = soup.find("a", href=lambda h, m=method: bool(h) and m in h)
         if a:
-            href = a["href"]
+            href = _coerce_str(a.get("href"))
             return urljoin(base_url, href) if base_url else href
     raise AuthenticationError(f"no authselect link found for methods: {tuple(prefer)}")
 
@@ -290,9 +306,9 @@ def extract_meta_refresh_url(html: str, *, base_url: str | None = None) -> str |
     """
     soup = _soup(html)
     for m in soup.find_all("meta"):
-        if (m.get("http-equiv") or "").lower() != "refresh":
+        if _coerce_str(m.get("http-equiv")).lower() != "refresh":
             continue
-        content = m.get("content") or ""
+        content = _coerce_str(m.get("content"))
         match = _META_REFRESH_URL_RE.search(content)
         if not match:
             continue

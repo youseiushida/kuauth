@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
+from kuauth._parsers import _coerce_str
 from kuauth.exceptions import AuthenticationError
 
 
@@ -23,14 +24,15 @@ def parse_saml_autosubmit(html: str, *, base_url: str | None = None) -> tuple[st
             break
     if form is None:
         raise AuthenticationError("SAMLResponse auto-submit form not found")
-    action = form.get("action", "")
+    action = _coerce_str(form.get("action"))
     if base_url:
         action = urljoin(base_url, action)
     fields: dict[str, str] = {}
     for inp in form.find_all("input"):
-        name = inp.get("name")
-        if name:
-            fields[name] = inp.get("value", "")
+        raw_name = inp.get("name")
+        if not raw_name:
+            continue
+        fields[_coerce_str(raw_name)] = _coerce_str(inp.get("value"), "")
     if "SAMLResponse" not in fields:
         raise AuthenticationError("SAMLResponse field missing")
     return action, fields

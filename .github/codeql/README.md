@@ -1,167 +1,172 @@
-# CodeQL custom queries for kuauth
+# kuauth 用 CodeQL カスタムクエリ
 
-This directory holds the bespoke static-analysis queries that protect
-credential surfaces specific to `kuauth`. They run in the `CodeQL`
-workflow (`.github/workflows/codeql.yml`) alongside GitHub's
-`security-extended` Python suite.
+このディレクトリには、`kuauth` ライブラリ固有の credential 取り扱い面を
+保護するための静的解析クエリが置かれています。`CodeQL` ワークフロー
+(`.github/workflows/codeql.yml`) で、GitHub の `security-extended` Python
+スイートと並行して実行されます。
 
-## Layout
+## レイアウト
 
-The shared models live in a separate library pack so that the query
-pack imports them via the dependency graph rather than as sibling
-files. This avoids the "references a local library, not the named
-module" warning that CodeQL emits when query packs reach across to
-helper `.qll` files.
+共有モデル (`KuauthSources` / `KuauthSinks` / `KuauthAllowedHosts`) は
+独立したライブラリパックに切り出しています。クエリパックから兄弟
+ファイルとして直接 import すると CodeQL が "references a local
+library, not the named module" 警告を出すため、それを回避する目的です。
 
-The workspace file lives at the REPO ROOT (`codeql-workspace.yml`)
-rather than under `.github/codeql/`, because GitHub's CodeQL Action
-runs `codeql database init` from the repo root and walks for the
-workspace from there. A workspace file deeper than that is silently
-ignored, leading to "Pack X was not found locally" failures on CI
-even though `codeql test run` works fine on a developer machine.
+ワークスペースファイル (`codeql-workspace.yml`) は `.github/codeql/`
+配下ではなくリポジトリのルートに置いています。GitHub の CodeQL
+Action はリポジトリルートから `codeql database init` を起動し、その
+位置から workspace ファイルを探すため、それより深い位置に置くと
+無視されて CI 上で「Pack X was not found locally」と落ちます (ローカル
+で `codeql test run` だけ通って気づかない罠)。
 
 ```
-codeql-workspace.yml         # at repo root: lists the 3 local packs
+codeql-workspace.yml         # リポジトリルート: ローカル 3 パックを列挙
 .github/codeql/
-  codeql-config.yml          # which queries run, which paths to scan
-  README.md                  # (this file)
+  codeql-config.yml          # どのクエリを走らせるか / どのパスを scan するか
+  README.md                  # このファイル
   lib/
-    qlpack.yml               # library pack — kuauth/credential-leak-lib
-    KuauthSources.qll        # shared model: credential sources
-    KuauthSinks.qll          # shared model: leak sinks
-    KuauthAllowedHosts.qll   # shared model: legitimate IdP submitters
+    qlpack.yml               # ライブラリパック: kuauth/credential-leak-lib
+    KuauthSources.qll        # 共有モデル: credential source
+    KuauthSinks.qll          # 共有モデル: 漏洩 sink
+    KuauthAllowedHosts.qll   # 共有モデル: 正規 IdP submitter (sanitizer)
   queries/
-    qlpack.yml               # query pack — kuauth/credential-leak-queries
+    qlpack.yml               # クエリパック: kuauth/credential-leak-queries
     codeql-suites/
-      credential-leak.qls    # suite that selects the local queries
-    CredLeak-Logging.ql      # query: creds -> logging
-    CredLeak-Exception.ql    # query: creds -> exception messages
-    CredLeak-ReprStr.ql      # query: creds -> __repr__ / __str__
-    CredLeak-Disk.ql         # query: creds -> file/serialization writes
-    CredLeak-UnknownHttp.ql  # query: creds -> non-IdP HTTP egress
+      credential-leak.qls    # ローカルクエリを束ねる suite
+    CredLeak-Logging.ql      # creds → logging
+    CredLeak-Exception.ql    # creds → 例外メッセージ
+    CredLeak-ReprStr.ql      # creds → __repr__ / __str__
+    CredLeak-Disk.ql         # creds → ファイル / シリアライズ書き出し
+    CredLeak-UnknownHttp.ql  # creds → 非 IdP への HTTP 送信
     tests/
-      qlpack.yml             # test pack — depends on both lib + queries
+      qlpack.yml             # テストパック (lib + queries に依存)
       <QueryName>/
-        test.py              # extraction input
-        <QueryName>.qlref    # references the query under test
-        <QueryName>.expected # expected output (regenerated via --learn)
+        test.py              # extractor への入力
+        <QueryName>.qlref    # 対象クエリへの参照
+        <QueryName>.expected # 期待出力 (`--learn` で再生成)
 ```
 
-## Sources, sinks, sanitizers
+## Source / Sink / Sanitizer
 
-Sources (`lib/KuauthSources.qll`) are credential-bearing values:
+### Source (`lib/KuauthSources.qll`)
 
-- `KyotoUAuth.password` (property) and `_password` (attribute)
+credential を保持する値:
+
+- `KyotoUAuth.password` (property) と `_password` (attribute)
 - `KyotoUAuth._totp_secret`
 - `KyotoUAuth._onetime_password`
-- Return value of `KyotoUAuth._resolve_otp()`
-- Return value of invoking `KyotoUAuth._otp_callback`
+- `KyotoUAuth._resolve_otp()` の戻り値
+- `KyotoUAuth._otp_callback` を呼び出した結果
 
-`username` is not a source — it is shared with the IdP in URL-resolvable
-form (EPPN) and treating it as taint dilutes precision without adding
-protection. `__init__` parameters are not modeled directly because every
-realistic flow into a sink goes through the post-construction attribute
-read (`self._password` etc.), which the attribute source already
-covers.
+`username` は意図的に source から外しています。EPPN として URL
+解決可能な形で IdP 側にも共有される値であり、taint 扱いすると精度
+が落ちるだけで保護増分がほぼないからです。`__init__` の引数も
+直接モデル化していません。実際に sink へ流れるパスはすべて構築
+後の `self._password` 等の attribute read を経由するので、
+attribute source 側でカバーできます。
 
-Sinks (`lib/KuauthSinks.qll`):
+### Sink (`lib/KuauthSinks.qll`)
 
-- Logging: `logging.*`, `Logger.*` (typed via API graphs), `print`,
-  `warnings.warn`, `sys.stdout/stderr.write`, `traceback.print_*`. For
-  `logger.<level>(msg, *args)` every positional argument is a sink
-  (args 1+ are `%`-substitutions that get rendered into the log line).
-- Exception: argument of `raise X(...)`
-- ReprStr: return value of `__repr__` / `__str__`
-- Disk: `open().write`, `Path.write_text/write_bytes`, `json.dump(s)`,
-  `pickle.dump(s)`, `csv.writer.writerow(s)`, `csv.DictWriter.writerow(s)`
-- HTTP: any `.get/post/put/patch/delete/request/send/stream(...)` method
-  call OR module-level `httpx.<method>(...)`. We don't type-filter the
-  receiver because httpx is third-party and CodeQL's API graph cannot
-  reliably follow `KyotoUAuth._http = httpx.Client()` → `_SPService.http`
-  property → `self.http.post(...)` end to end. Method-name + httpx-shape
-  argument matching (positional URL or `params`/`data`/`json`/`headers`/
-  `content` keyword) is specific enough that non-HTTP `.get()` /
-  `.append()` collisions don't reach the sink.
+- Logging: `logging.*`, `Logger.*` (API graph で型付け), `print`,
+  `warnings.warn`, `sys.stdout/stderr.write`, `traceback.print_*`。
+  `logger.<level>(msg, *args)` の場合、引数 0 はテンプレート、
+  引数 1 以降は `%` 置換で行に展開されるので、すべての positional
+  引数を sink にしています。
+- Exception: `raise X(...)` の引数
+- ReprStr: `__repr__` / `__str__` の戻り値
+- Disk: `open().write`, `Path.write_text/write_bytes`,
+  `json.dump(s)`, `pickle.dump(s)`, `csv.writer.writerow(s)`,
+  `csv.DictWriter.writerow(s)`
+- HTTP: 任意の `.get/post/put/patch/delete/request/send/stream(...)`
+  メソッド呼び出し、または `httpx.<method>(...)` の module-level
+  shortcut。受信側の型は絞っていません。httpx は third-party で
+  CodeQL の API graph では `KyotoUAuth._http = httpx.Client()` →
+  `_SPService.http` プロパティ → `self.http.post(...)` の経路を
+  end-to-end で追えないためです。代わりに「メソッド名 + httpx
+  特有の引数形状 (positional URL もしくは `params`/`data`/`json`/
+  `headers`/`content` の kwarg)」で識別しているので、`dict.get` /
+  `list.append` のような同名呼び出しが sink まで到達しません。
+  `request` / `stream` だけ位置引数の順序が違う (引数 0 = HTTP verb、
+  引数 1 = URL) ので別の枝でモデル化しています。
 
-Sanitizer (`lib/KuauthAllowedHosts.qll`): the four legitimate auth-form
-submitters
+### Sanitizer (`lib/KuauthAllowedHosts.qll`)
+
+正規の認証フォーム送信を行う 4 つの関数:
 
 - `_submit_simplesaml_password`
 - `_submit_simplesaml_otp`
 - `_submit_shib_idp_login`
-- `PandA._submit_cas_login` (class-pinned)
+- `PandA._submit_cas_login` (クラス名ピン留め)
 
-Any HTTP egress whose enclosing function matches the allowlist is
-treated as a sanitization barrier in `CredLeak-UnknownHttp`. Adding a
-fifth IdP submitter is intentionally a code change here — silent
-allowlist drift is a worse failure mode than a noisy CI alert for a
-credential-handling library.
+囲んでいる関数がこのアロウリストに該当する場合は、
+`CredLeak-UnknownHttp` の sink から外す扱いになります。5 つ目の
+IdP submitter を足すときは、ここを編集することが意図的な手順に
+なっています。「無言でアロウリストが膨らんで気づかない」より
+「足し忘れて CI が騒ぐ」失敗モードのほうが credential を扱う
+ライブラリには望ましいためです。
 
-## Running locally
+## ローカル実行
 
-Install the CodeQL CLI
-(<https://github.com/github/codeql-cli-binaries/releases>) and ensure
-`codeql` is on `PATH`.
+CodeQL CLI
+(<https://github.com/github/codeql-cli-binaries/releases>) を
+インストールし、`codeql` が `PATH` 上にあることを確認してください。
 
 ```bash
-# Resolve dependencies for all three local packs.
+# 3 つのローカルパックの依存解決。
 codeql pack install .github/codeql/lib
 codeql pack install .github/codeql/queries
 codeql pack install .github/codeql/queries/tests
 
-# Build a database from the kuauth source tree.
+# kuauth のソースツリーから database を作る。
 codeql database create --language=python --source-root=. ./codeql-db
 
-# Run the local pack against the database.
+# ローカルパックを database に対して走らせる。
 codeql database analyze ./codeql-db \
   --format=sarif-latest \
   --output=results.sarif \
   .github/codeql/queries
 ```
 
-## Updating expected test output
+## 期待出力 (`.expected`) の更新
 
-The `.expected` files in `tests/<QueryName>/` are regenerated whenever a
-query's output format changes:
+クエリの出力フォーマットが変わるたびに `tests/<QueryName>/` 配下の
+`.expected` を再生成します。
 
 ```bash
-# From the repo root:
+# リポジトリのルートで:
 codeql test run --learn .github/codeql/queries/tests/
 
-# Then commit the updated .expected files.
-codeql test run .github/codeql/queries/tests/   # verifies they match
+# 確認後にコミット。
+codeql test run .github/codeql/queries/tests/   # actual と一致するか検証
 ```
 
-The first time you run `--learn`, CodeQL writes `.expected` files
-containing the actual query output. Inspect them and confirm that
-positive cases (functions named `leak_*`) appear and negative cases
-(functions named `safe_*`) do not before committing.
+`--learn` を初めて回すと、`.expected` に実際のクエリ出力が書き出され
+ます。コミット前に内容を確認し、positive ケース (`leak_*`) が確かに
+flag されていて、negative ケース (`safe_*`) が flag されていないこと
+を目視で押さえてからコミットしてください。
 
-## Adding a new query
+## 新しいクエリを追加するとき
 
-1. Add `<QueryName>.ql` and `<QueryName>.qhelp` under `queries/`. If it
-   needs a new shared source/sink/sanitizer, add it to one of the
-   `lib/*.qll` files first.
-2. Add a `tests/<QueryName>/` directory with `test.py` (positive +
-   negative cases) and `<QueryName>.qlref`.
-3. Run `codeql test run --learn .github/codeql/queries/tests/` to
-   produce the `.expected` file.
-4. Commit all four files together.
+1. `queries/` 配下に `<QueryName>.ql` と `<QueryName>.qhelp` を追加。
+   新しい source / sink / sanitizer が要るなら、まず `lib/*.qll` を
+   先に更新する。
+2. `tests/<QueryName>/` ディレクトリを作り、positive と negative の
+   両ケースを含む `test.py` と `<QueryName>.qlref` を置く。
+3. `codeql test run --learn .github/codeql/queries/tests/` を回し、
+   `.expected` を生成。
+4. これら 4 ファイルをまとめて 1 つのコミットにする。
 
 ## Surface invariant test
 
-The QL test fixtures use synthetic stand-ins for `KyotoUAuth` so they
-can be extracted by `codeql test run` without pulling in the whole
-`src/kuauth` tree. A rename like `_password` → `_pw` in
-`src/kuauth/auth.py` would silently break the queries while the QL
-tests stayed green.
+QL テストフィクスチャは `KyotoUAuth` の合成 stand-in を使っています。
+`codeql test run` で `src/kuauth` ツリー全体を取り込まずに済ませる
+ためですが、その代償として `src/kuauth/auth.py` で `_password` を
+`_pw` にリネームしても QL テストは緑のままになるという穴が空きます。
 
-To close that gap, `tests/unit/test_codeql_query_surface.py` pins the
-exact attribute and method names that the queries match against. If a
-rename in `src/` breaks those names, the pytest run fails first, so
-you cannot land the rename without also updating `KuauthSources.qll` /
-`KuauthAllowedHosts.qll` and regenerating the QL baselines in the same
-change.
+これを塞ぐのが `tests/unit/test_codeql_query_surface.py` です。
+クエリが依存している attribute / method 名をここで pin しているので、
+`src/` 側でリネームすると pytest が先に落ちます。これにより
+「リネームを `KuauthSources.qll` / `KuauthAllowedHosts.qll` の更新と
+QL ベースライン再生成と同じ change で揃える」ことが強制されます。
 
-Runs as part of the standard `uv run pytest tests/unit -q`. No CodeQL
-CLI required.
+通常の `uv run pytest tests/unit -q` で動くので、CodeQL CLI は不要です。

@@ -4,7 +4,7 @@ name: Live integration
 # ``pull_request`` — that would hand forks access to the secrets.
 on:
   schedule:
-    - cron: '15 18 * * *'   # 18:15 UTC = 03:15 JST, off-peak
+    - cron: '0 17 * * *'    # 17:00 UTC = 02:00 JST, off-peak
   workflow_dispatch:         # manual trigger for debugging
 
 permissions:

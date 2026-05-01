@@ -94,13 +94,9 @@ class _SPService:
     def _ensure_session(self) -> None:
         raise NotImplementedError
 
-    def _follow_meta_refresh(
-        self, r: httpx.Response, *, max_hops: int = 10
-    ) -> httpx.Response:
+    def _follow_meta_refresh(self, r: httpx.Response, *, max_hops: int = 10) -> httpx.Response:
         for _ in range(max_hops):
-            target = _parsers.extract_meta_refresh_url(
-                r.text, base_url=str(r.url)
-            )
+            target = _parsers.extract_meta_refresh_url(r.text, base_url=str(r.url))
             if not target:
                 return r
             r = self.http.get(target)
@@ -142,9 +138,7 @@ class ShibbolethSPService(_SPService):
         r = self._advance_through_idp(r)
         r = self._post_saml_hook(r)
         if r.status_code >= 400:
-            raise SPAccessError(
-                f"{type(self).__name__}: entry returned HTTP {r.status_code}"
-            )
+            raise SPAccessError(f"{type(self).__name__}: entry returned HTTP {r.status_code}")
         # Defense in depth: the IdP walk can settle on a 200 that doesn't
         # actually carry an SP session (e.g., SAML POST returned but the
         # ACS didn't mint a cookie). The check must be scoped to THIS SP's
@@ -201,9 +195,7 @@ class ShibbolethSPService(_SPService):
                 r = self._submit_simplesaml_password(r)
                 r = self._follow_meta_refresh(r)
                 if _parsers.contains_login_form(r.text):
-                    raise AuthenticationError(
-                        f"{type(self).__name__}: password rejected by IdP"
-                    )
+                    raise AuthenticationError(f"{type(self).__name__}: password rejected by IdP")
                 continue
             if _parsers.contains_authselect(r.text):
                 r = self._follow_authselect(r)
@@ -212,9 +204,7 @@ class ShibbolethSPService(_SPService):
                 r = self._submit_simplesaml_otp(r)
                 r = self._follow_meta_refresh(r)
                 if _parsers.contains_otp_form(r.text):
-                    raise AuthenticationError(
-                        f"{type(self).__name__}: OTP rejected by IdP"
-                    )
+                    raise AuthenticationError(f"{type(self).__name__}: OTP rejected by IdP")
                 continue
             if _parsers.contains_shib_idp_login_form(r.text):
                 r = self._submit_shib_idp_login(r)
@@ -231,9 +221,7 @@ class ShibbolethSPService(_SPService):
                 r = self._walk_localstorage_form(r)
                 continue
             if _parsers.contains_saml_autosubmit(r.text):
-                r = _saml.post_saml_autosubmit(
-                    self.http, r.text, base_url=str(r.url)
-                )
+                r = _saml.post_saml_autosubmit(self.http, r.text, base_url=str(r.url))
                 continue
             break
         if (
@@ -245,9 +233,7 @@ class ShibbolethSPService(_SPService):
             or _parsers.contains_localstorage_form(r.text)
             or _parsers.contains_saml_autosubmit(r.text)
         ):
-            raise SPAccessError(
-                f"{type(self).__name__}: IdP flow did not complete within 20 hops"
-            )
+            raise SPAccessError(f"{type(self).__name__}: IdP flow did not complete within 20 hops")
         return r
 
     def _submit_simplesaml_password(self, r: httpx.Response) -> httpx.Response:
@@ -276,9 +262,7 @@ class ShibbolethSPService(_SPService):
         return self.http.post(form["action"], data=fields)
 
     def _walk_localstorage_form(self, r: httpx.Response) -> httpx.Response:
-        form = _parsers.parse_shib_localstorage_form(
-            r.text, base_url=str(r.url)
-        )
+        form = _parsers.parse_shib_localstorage_form(r.text, base_url=str(r.url))
         return self.http.post(form["action"], data=form["fields"])
 
     def _post_saml_hook(self, r: httpx.Response) -> httpx.Response:

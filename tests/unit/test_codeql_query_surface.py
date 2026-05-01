@@ -109,11 +109,8 @@ def test_legitimate_auth_submitter_present(
 
     mod = importlib.import_module(module_name)
     cls = getattr(mod, class_name, None)
-    assert cls is not None, (
-        f"{module_name}.{class_name} missing — update KuauthAllowedHosts.qll."
-    )
+    assert cls is not None, f"{module_name}.{class_name} missing — update KuauthAllowedHosts.qll."
     method = getattr(cls, method_name, None)
     assert callable(method), (
-        f"{class_name}.{method_name} missing — update "
-        f"KuauthAllowedHosts.isLegitimateAuthSubmitter."
+        f"{class_name}.{method_name} missing — update KuauthAllowedHosts.isLegitimateAuthSubmitter."
     )

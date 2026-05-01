@@ -20,7 +20,6 @@ import respx
 
 from kuauth.auth import KyotoUAuth
 from kuauth.services.mykuline import MyKULINE
-
 from tests.replay._router import load_text
 
 
@@ -44,16 +43,13 @@ def _wire_mykuline_flow(mock: respx.Router, fixtures_dir) -> None:
     mock.post(
         url__regex=r"^https://kuline\.kulib\.kyoto-u\.ac\.jp/idp/profile/SAML2/Redirect/SSO.*execution=e1s2.*"
     ).mock(return_value=httpx.Response(200, text=saml_html))
-    mock.post(
-        "https://kuline.kulib.kyoto-u.ac.jp/Shibboleth.sso/SAML2/POST"
-    ).mock(
+    mock.post("https://kuline.kulib.kyoto-u.ac.jp/Shibboleth.sso/SAML2/POST").mock(
         return_value=httpx.Response(
             302,
             headers={
                 "Location": "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/",
                 "Set-Cookie": (
-                    "_shibsession_MYKULINE=TEST; "
-                    "Path=/; Domain=kuline.kulib.kyoto-u.ac.jp; Secure"
+                    "_shibsession_MYKULINE=TEST; Path=/; Domain=kuline.kulib.kyoto-u.ac.jp; Secure"
                 ),
             },
         )
@@ -72,18 +68,18 @@ def test_search_top_full_consent_flow(fixtures_dir, http_client):
     with respx.mock(assert_all_called=False) as mock:
         _wire_mykuline_flow(mock, fixtures_dir)
 
-        mock.get(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/"
-        ).mock(side_effect=[
-            httpx.Response(200, text=consent_html),
-            httpx.Response(200, text=eppn_html),
-        ])
-        mock.post(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/"
-        ).mock(return_value=httpx.Response(200, text=search_html))
-        mock.get(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/"
-        ).mock(return_value=httpx.Response(200, text=search_html))
+        mock.get("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/").mock(
+            side_effect=[
+                httpx.Response(200, text=consent_html),
+                httpx.Response(200, text=eppn_html),
+            ]
+        )
+        mock.post("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/").mock(
+            return_value=httpx.Response(200, text=search_html)
+        )
+        mock.get("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/").mock(
+            return_value=httpx.Response(200, text=search_html)
+        )
 
         # No totp_secret — MyKULINE doesn't route through the OTP IdP.
         auth = KyotoUAuth("u", "p", http=http_client)
@@ -101,23 +97,25 @@ def test_widget_returns_html(fixtures_dir, http_client):
     with respx.mock(assert_all_called=False) as mock:
         _wire_mykuline_flow(mock, fixtures_dir)
 
-        mock.get(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/"
-        ).mock(side_effect=[
-            httpx.Response(200, text=consent_html),
-            httpx.Response(200, text=eppn_html),
-        ])
-        mock.post(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/"
-        ).mock(return_value=httpx.Response(200, text=search_html))
+        mock.get("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/").mock(
+            side_effect=[
+                httpx.Response(200, text=consent_html),
+                httpx.Response(200, text=eppn_html),
+            ]
+        )
+        mock.post("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/").mock(
+            return_value=httpx.Response(200, text=search_html)
+        )
         mock.get(
             url__regex=r"^https://kuline\.kulib\.kyoto-u\.ac\.jp/opac/myopac/loan/widget/.*"
         ).mock(return_value=httpx.Response(200, text=widget_html))
 
         auth = KyotoUAuth("u", "p", http=http_client)
-        html = MyKULINE(auth).get(
-            "/opac/myopac/loan/widget/", params={"lang": 0, "countercd": 106000}
-        ).text
+        html = (
+            MyKULINE(auth)
+            .get("/opac/myopac/loan/widget/", params={"lang": 0, "countercd": 106000})
+            .text
+        )
 
     assert "loan" in html or "TEST_BOOK_A" in html
 
@@ -136,23 +134,21 @@ def test_works_without_totp_secret(fixtures_dir, http_client):
 
     with respx.mock(assert_all_called=False) as mock:
         _wire_mykuline_flow(mock, fixtures_dir)
-        mock.get(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/"
-        ).mock(side_effect=[
-            httpx.Response(200, text=consent_html),
-            httpx.Response(200, text=eppn_html),
-        ])
-        mock.post(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/"
-        ).mock(return_value=httpx.Response(200, text=search_html))
-        mock.get(
-            "https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/"
-        ).mock(return_value=httpx.Response(200, text=search_html))
+        mock.get("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_secure/opac_search/").mock(
+            side_effect=[
+                httpx.Response(200, text=consent_html),
+                httpx.Response(200, text=eppn_html),
+            ]
+        )
+        mock.post("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/").mock(
+            return_value=httpx.Response(200, text=search_html)
+        )
+        mock.get("https://kuline.kulib.kyoto-u.ac.jp/opac/opac_search/").mock(
+            return_value=httpx.Response(200, text=search_html)
+        )
 
         auth = KyotoUAuth("u", "p", http=http_client)  # deliberately no OTP
         r = MyKULINE(auth).get("/opac/opac_search/")
 
     assert r.status_code == 200
-    assert any(
-        c.name.startswith("_shibsession_") for c in http_client.cookies.jar
-    )
+    assert any(c.name.startswith("_shibsession_") for c in http_client.cookies.jar)

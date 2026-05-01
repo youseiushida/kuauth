@@ -11,11 +11,9 @@ import pytest
 import respx
 
 from kuauth.auth import KyotoUAuth
-from kuauth.exceptions import AuthenticationError
+from kuauth.exceptions import AuthenticationError, SPAccessError
 from kuauth.services.panda import PandA
-
 from tests.replay._router import load_text
-
 
 CAS_ACTION_URL = (
     "https://panda.ecs.kyoto-u.ac.jp/cas/login;jsessionid=TEST_JSESSIONID"
@@ -42,12 +40,8 @@ def _wire_successful_login(mock: respx.Router, fixtures_dir) -> None:
     # query string, so /sakai-login-tool/container would also swallow the
     # later /sakai-login-tool/container?ticket=... request. We disambiguate
     # with url__regex.
-    mock.get(
-        url__regex=r"^https://panda\.ecs\.kyoto-u\.ac\.jp/sakai-login-tool/container$"
-    ).mock(
-        return_value=httpx.Response(
-            302, headers={"Location": CAS_LOGIN_URL}
-        )
+    mock.get(url__regex=r"^https://panda\.ecs\.kyoto-u\.ac\.jp/sakai-login-tool/container$").mock(
+        return_value=httpx.Response(302, headers={"Location": CAS_LOGIN_URL})
     )
     mock.get(CAS_LOGIN_URL).mock(
         return_value=httpx.Response(
@@ -69,8 +63,7 @@ def _wire_successful_login(mock: respx.Router, fixtures_dir) -> None:
         )
     )
     mock.get(
-        "https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container"
-        "?ticket=ST-1234-TEST_TICKET"
+        "https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container?ticket=ST-1234-TEST_TICKET"
     ).mock(
         return_value=httpx.Response(
             302,
@@ -80,7 +73,13 @@ def _wire_successful_login(mock: respx.Router, fixtures_dir) -> None:
     mock.get("https://panda.ecs.kyoto-u.ac.jp/portal").mock(
         return_value=httpx.Response(
             200,
-            headers={"Content-Type": "text/html;charset=UTF-8"},
+            headers={
+                "Content-Type": "text/html;charset=UTF-8",
+                # Sakai stamps this on every authenticated portal response;
+                # _ensure_session checks for it as a positive proof of CAS
+                # ticket exchange success.
+                "X-Sakai-Session": "test-sakai-session-uuid",
+            },
             text=portal_html,
         )
     )
@@ -123,12 +122,8 @@ def test_raises_on_cas_rejection(fixtures_dir, http_client):
     cas_html = load_text(fixtures_dir, "panda_cas_login.html")
 
     with respx.mock(assert_all_called=False) as mock:
-        mock.get(
-            "https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container"
-        ).mock(
-            return_value=httpx.Response(
-                302, headers={"Location": CAS_LOGIN_URL}
-            )
+        mock.get("https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container").mock(
+            return_value=httpx.Response(302, headers={"Location": CAS_LOGIN_URL})
         )
         mock.get(CAS_LOGIN_URL).mock(
             return_value=httpx.Response(
@@ -148,4 +143,62 @@ def test_raises_on_cas_rejection(fixtures_dir, http_client):
 
         auth = KyotoUAuth("u", "wrong", http=http_client)
         with pytest.raises(AuthenticationError, match="CAS rejected"):
+            PandA(auth).get("/portal")
+
+
+def test_raises_when_post_cas_response_lacks_sakai_session(fixtures_dir, http_client):
+    """If the CAS handoff settles on a 200 that doesn't carry the
+    ``X-Sakai-Session`` header, ``_ensure_session`` must raise instead of
+    latching ``_sp_ready=True`` on what may be an unauthenticated gateway
+    page (e.g. CAS maintenance, ticket validation race).
+
+    Symmetric with the shibsession guard in ShibbolethSPService — the prior
+    check ('CAS form re-displayed?') only catches password rejection, not
+    'CAS form gone but session was never minted.'
+    """
+    cas_html = load_text(fixtures_dir, "panda_cas_login.html")
+    portal_html = load_text(fixtures_dir, "panda_portal.html")
+
+    with respx.mock(assert_all_called=False) as mock:
+        mock.get(
+            url__regex=r"^https://panda\.ecs\.kyoto-u\.ac\.jp/sakai-login-tool/container$"
+        ).mock(return_value=httpx.Response(302, headers={"Location": CAS_LOGIN_URL}))
+        mock.get(CAS_LOGIN_URL).mock(
+            return_value=httpx.Response(
+                200,
+                headers={"Content-Type": "text/html;charset=UTF-8"},
+                text=cas_html,
+            )
+        )
+        mock.post(CAS_ACTION_URL).mock(
+            return_value=httpx.Response(
+                302,
+                headers={
+                    "Location": (
+                        "https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container"
+                        "?ticket=ST-1234-TEST_TICKET"
+                    )
+                },
+            )
+        )
+        mock.get(
+            "https://panda.ecs.kyoto-u.ac.jp/sakai-login-tool/container?ticket=ST-1234-TEST_TICKET"
+        ).mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "https://panda.ecs.kyoto-u.ac.jp/portal"},
+            )
+        )
+        # /portal returns 200 but WITHOUT X-Sakai-Session — looks like the
+        # public gateway page rather than an authenticated session.
+        mock.get("https://panda.ecs.kyoto-u.ac.jp/portal").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"Content-Type": "text/html;charset=UTF-8"},
+                text=portal_html,
+            )
+        )
+
+        auth = KyotoUAuth("u", "p", http=http_client)
+        with pytest.raises(SPAccessError, match="X-Sakai-Session"):
             PandA(auth).get("/portal")

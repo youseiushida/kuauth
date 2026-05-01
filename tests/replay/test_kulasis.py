@@ -9,14 +9,11 @@ import respx
 from kuauth.auth import KyotoUAuth
 from kuauth.exceptions import OTPRequiredError, SPAccessError
 from kuauth.services.kulasis import KULASIS
-
 from tests.replay._router import (
     build_simplesaml_idp_router,
     load_bytes,
-    load_text,
     sp_entry_redirect_response,
 )
-
 
 SP_ENTRY = "https://www.k.kyoto-u.ac.jp/student/la/top"
 SP_ACS = "https://www.k.kyoto-u.ac.jp/Shibboleth.sso/SAML2/POST"
@@ -57,18 +54,14 @@ def test_top_returns_sjis_decoded_html(fixtures_dir, http_client):
             ]
         )
 
-        auth = KyotoUAuth(
-            "u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client
-        )
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
         html = KULASIS(auth).get("/student/la/top").text
 
     assert "\u6559\u52d9\u60c5\u5831\u30b7\u30b9\u30c6\u30e0" in html  # 教務情報システム
     assert "TEST_COURSE_A" in html
 
 
-def test_first_access_walks_simplesaml_and_sets_shibsession(
-    fixtures_dir, http_client
-):
+def test_first_access_walks_simplesaml_and_sets_shibsession(fixtures_dir, http_client):
     """Pins: the full SimpleSAMLphp chain runs lazily on first SP access
     and lands a _shibsession_* cookie in the shared jar (what used to be
     KyotoUAuth.login()'s responsibility).
@@ -98,16 +91,10 @@ def test_first_access_walks_simplesaml_and_sets_shibsession(
             ]
         )
 
-        auth = KyotoUAuth(
-            "u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client
-        )
-        assert not any(
-            c.name.startswith("_shibsession_") for c in http_client.cookies.jar
-        )
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
+        assert not any(c.name.startswith("_shibsession_") for c in http_client.cookies.jar)
         KULASIS(auth).get("/student/la/top")
-        assert any(
-            c.name.startswith("_shibsession_") for c in http_client.cookies.jar
-        )
+        assert any(c.name.startswith("_shibsession_") for c in http_client.cookies.jar)
 
 
 def test_ensure_session_runs_once(fixtures_dir, http_client):
@@ -138,14 +125,10 @@ def test_ensure_session_runs_once(fixtures_dir, http_client):
             ]
         )
 
-        auth = KyotoUAuth(
-            "u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client
-        )
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
         svc = KULASIS(auth)
         svc.get("/student/la/top")
-        login_cgi_calls = len(
-            [r for r in mock.calls if "/pub/login.cgi" in str(r.request.url)]
-        )
+        login_cgi_calls = len([r for r in mock.calls if "/pub/login.cgi" in str(r.request.url)])
         svc.get("/student/la/top")
         login_cgi_calls_after = len(
             [r for r in mock.calls if "/pub/login.cgi" in str(r.request.url)]
@@ -204,16 +187,12 @@ def test_missing_shibsession_raises(fixtures_dir, http_client):
             ]
         )
 
-        auth = KyotoUAuth(
-            "u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client
-        )
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
         with pytest.raises(SPAccessError, match="no _shibsession_"):
             KULASIS(auth).get("/student/la/top")
 
 
-def test_shibsession_from_sibling_sp_does_not_pass_guard(
-    fixtures_dir, http_client
-):
+def test_shibsession_from_sibling_sp_does_not_pass_guard(fixtures_dir, http_client):
     """Regression: the shibsession guard must be scoped to THIS SP's host.
 
     A shared ``KyotoUAuth`` may already carry ``_shibsession_*`` for a
@@ -253,8 +232,6 @@ def test_shibsession_from_sibling_sp_does_not_pass_guard(
             path="/",
         )
 
-        auth = KyotoUAuth(
-            "u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client
-        )
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
         with pytest.raises(SPAccessError, match="no _shibsession_"):
             KULASIS(auth).get("/student/la/top")

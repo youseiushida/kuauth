@@ -7,7 +7,6 @@ import pytest
 from kuauth import _parsers
 from kuauth.exceptions import AuthenticationError
 
-
 LOGIN_FORM_HTML = """
 <html><body>
 <form id="login" name="login" method="post" action="login.cgi" autocomplete="off">
@@ -230,9 +229,7 @@ class TestPredicates:
     def test_detects_cas_login(self):
         assert _parsers.contains_cas_login_form(CAS_LOGIN_HTML)
         # A form with an ``lt`` input but no ``execution`` must not match.
-        assert not _parsers.contains_cas_login_form(
-            '<input name="lt" value="x">'
-        )
+        assert not _parsers.contains_cas_login_form('<input name="lt" value="x">')
         assert not _parsers.contains_cas_login_form(LOGIN_FORM_HTML)
 
 
@@ -241,7 +238,7 @@ class TestMetaRefresh:
         html = (
             '<html><head><meta http-equiv="refresh" '
             'content="0;URL=https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?x=1" />'
-            '</head></html>'
+            "</head></html>"
         )
         url = _parsers.extract_meta_refresh_url(html)
         assert url == "https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?x=1"
@@ -255,9 +252,7 @@ class TestMetaRefresh:
 
     def test_case_insensitive(self):
         html = '<META HTTP-EQUIV="Refresh" CONTENT="1;   URL = https://x.test/y">'
-        assert (
-            _parsers.extract_meta_refresh_url(html) == "https://x.test/y"
-        )
+        assert _parsers.extract_meta_refresh_url(html) == "https://x.test/y"
 
     def test_returns_none_when_absent(self):
         assert _parsers.extract_meta_refresh_url(LOGIN_FORM_HTML) is None

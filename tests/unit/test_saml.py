@@ -7,7 +7,6 @@ import pytest
 from kuauth import _saml
 from kuauth.exceptions import AuthenticationError
 
-
 AUTOSUBMIT_HTML = """
 <html><body onload="document.forms[0].submit()">
 <form action="https://student.iimc.kyoto-u.ac.jp/Shibboleth.sso/SAML2/POST" method="post">
@@ -38,7 +37,7 @@ def test_parse_autosubmit_with_relative_action():
       <input type="hidden" name="RelayState" value="Y">
     </form>
     """
-    action, fields = _saml.parse_saml_autosubmit(
+    action, _fields = _saml.parse_saml_autosubmit(
         html, base_url="https://kuline.kulib.kyoto-u.ac.jp/"
     )
     assert action == "https://kuline.kulib.kyoto-u.ac.jp/Shibboleth.sso/SAML2/POST"

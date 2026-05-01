@@ -65,14 +65,10 @@ def build_simplesaml_idp_router(
     ).mock(
         return_value=httpx.Response(
             302,
-            headers={
-                "Location": "https://auth.iimc.kyoto-u.ac.jp/pub/login.cgi?back=TEST"
-            },
+            headers={"Location": "https://auth.iimc.kyoto-u.ac.jp/pub/login.cgi?back=TEST"},
         )
     )
-    router.get(
-        url__regex=r"^https://auth\.iimc\.kyoto-u\.ac\.jp/pub/login\.cgi.*"
-    ).mock(
+    router.get(url__regex=r"^https://auth\.iimc\.kyoto-u\.ac\.jp/pub/login\.cgi.*").mock(
         return_value=httpx.Response(
             200,
             headers={"Content-Type": "text/html; charset=utf-8"},
@@ -82,14 +78,10 @@ def build_simplesaml_idp_router(
     router.post("https://auth.iimc.kyoto-u.ac.jp/pub/login.cgi").mock(
         return_value=httpx.Response(
             302,
-            headers={
-                "Location": "https://auth.iimc.kyoto-u.ac.jp/pub/otplogin.cgi?back=TEST"
-            },
+            headers={"Location": "https://auth.iimc.kyoto-u.ac.jp/pub/otplogin.cgi?back=TEST"},
         )
     )
-    router.get(
-        url__regex=r"^https://auth\.iimc\.kyoto-u\.ac\.jp/pub/otplogin\.cgi.*"
-    ).mock(
+    router.get(url__regex=r"^https://auth\.iimc\.kyoto-u\.ac\.jp/pub/otplogin\.cgi.*").mock(
         return_value=httpx.Response(
             200,
             headers={"Content-Type": "text/html; charset=utf-8"},
@@ -118,8 +110,7 @@ def build_simplesaml_idp_router(
 
 
 _SP_ENTRY_SSO_REDIRECT = (
-    "https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?"
-    "SAMLRequest=TEST&RelayState=TEST"
+    "https://auth.iimc.kyoto-u.ac.jp/saml/saml2/idp/SSOService.php?SAMLRequest=TEST&RelayState=TEST"
 )
 
 

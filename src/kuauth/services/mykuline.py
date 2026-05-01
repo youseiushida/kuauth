@@ -21,9 +21,7 @@ class MyKULINE(ShibbolethSPService):
         return self._follow_securelogin(super().post(path_or_url, **kwargs))
 
     def request(self, method: str, path_or_url: str, **kwargs) -> httpx.Response:
-        return self._follow_securelogin(
-            super().request(method, path_or_url, **kwargs)
-        )
+        return self._follow_securelogin(super().request(method, path_or_url, **kwargs))
 
     def _walk_consent_flow(self, r: httpx.Response) -> httpx.Response:
         form = _parsers.parse_shib_consent_form(r.text, base_url=str(r.url))
@@ -32,9 +30,7 @@ class MyKULINE(ShibbolethSPService):
     def _post_saml_hook(self, r: httpx.Response) -> httpx.Response:
         return self._follow_securelogin(r)
 
-    def _follow_securelogin(
-        self, r: httpx.Response, *, max_hops: int = 3
-    ) -> httpx.Response:
+    def _follow_securelogin(self, r: httpx.Response, *, max_hops: int = 3) -> httpx.Response:
         # Django OPAC wraps every secure page with an auto-submit form
         # (id="securelogin") that JS POSTs back to `rurl`. httpx doesn't run
         # JS, so replay the POST ourselves until we land on real content.
@@ -61,6 +57,4 @@ class MyKULINE(ShibbolethSPService):
         # The last POST may have landed on real content; accept it if so.
         if not _parsers.contains_eppn_form(r.text):
             return r
-        raise SPAccessError(
-            f"MyKULINE: securelogin chain did not settle within {max_hops} hops"
-        )
+        raise SPAccessError(f"MyKULINE: securelogin chain did not settle within {max_hops} hops")

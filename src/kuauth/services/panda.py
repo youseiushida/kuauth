@@ -36,12 +36,19 @@ class PandA(_SPService):
         if _parsers.contains_cas_login_form(r.text):
             r = self._submit_cas_login(r)
         if _parsers.contains_cas_login_form(r.text):
-            raise AuthenticationError(
-                f"{type(self).__name__}: CAS rejected credentials"
-            )
+            raise AuthenticationError(f"{type(self).__name__}: CAS rejected credentials")
         if r.status_code >= 400:
+            raise SPAccessError(f"{type(self).__name__}: entry returned HTTP {r.status_code}")
+        # Defense in depth, symmetric with ShibbolethSPService's
+        # _has_shibsession_for_host. Sakai stamps ``X-Sakai-Session`` on
+        # every response served by an authenticated portal request; the
+        # public pre-login gateway returns 200 without it. So presence of
+        # this header is a positive signal that CAS ticket exchange
+        # actually minted a session, not just that the redirect chain
+        # settled on a 200.
+        if not r.headers.get("x-sakai-session"):
             raise SPAccessError(
-                f"{type(self).__name__}: entry returned HTTP {r.status_code}"
+                f"{type(self).__name__}: post-CAS response missing X-Sakai-Session (URL: {r.url})"
             )
         self._sp_ready = True
 

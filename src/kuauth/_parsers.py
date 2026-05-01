@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
@@ -38,8 +38,9 @@ def _collect_inputs(form: Tag) -> dict[str, str]:
     return fields
 
 
-def _find_form(soup: BeautifulSoup, *, form_id: str | None = None,
-               has_input: str | None = None) -> Tag:
+def _find_form(
+    soup: BeautifulSoup, *, form_id: str | None = None, has_input: str | None = None
+) -> Tag:
     if form_id:
         form = soup.find("form", id=form_id)
         if form:
@@ -48,9 +49,7 @@ def _find_form(soup: BeautifulSoup, *, form_id: str | None = None,
         for form in soup.find_all("form"):
             if form.find("input", {"name": has_input}):
                 return form
-    raise AuthenticationError(
-        f"form not found (id={form_id!r}, has_input={has_input!r})"
-    )
+    raise AuthenticationError(f"form not found (id={form_id!r}, has_input={has_input!r})")
 
 
 def _resolve_action(form: Tag, base_url: str | None) -> str:
@@ -119,13 +118,16 @@ def parse_authselect_link(
     """
     soup = _soup(html)
     for method in prefer:
-        a = soup.find("a", href=lambda h: h and method in h)
+        # Bind ``method`` explicitly so the lambda captures the iteration's
+        # value rather than the late-binding loop variable. (BeautifulSoup
+        # invokes the predicate immediately during the same iteration, so
+        # the bug doesn't trigger today, but the explicit bind keeps
+        # tooling like ``ruff B023`` quiet and the intent obvious.)
+        a = soup.find("a", href=lambda h, m=method: h and m in h)
         if a:
             href = a["href"]
             return urljoin(base_url, href) if base_url else href
-    raise AuthenticationError(
-        f"no authselect link found for methods: {tuple(prefer)}"
-    )
+    raise AuthenticationError(f"no authselect link found for methods: {tuple(prefer)}")
 
 
 def parse_shib_consent_form(html: str, *, base_url: str | None = None) -> dict:
@@ -210,9 +212,8 @@ def contains_cas_login_form(html: str) -> bool:
     Pins on the combination of ``name="lt"`` and ``name="execution"`` so we
     don't false-positive on stray ``lt`` inputs.
     """
-    return (
-        ('name="lt"' in html or "name='lt'" in html)
-        and ('name="execution"' in html or "name='execution'" in html)
+    return ('name="lt"' in html or "name='lt'" in html) and (
+        'name="execution"' in html or "name='execution'" in html
     )
 
 
@@ -229,10 +230,7 @@ def parse_mykuline_eppn_form(html: str, *, base_url: str | None = None) -> dict:
     fields = _collect_inputs(form)
     fields.setdefault("loginMode", "login")
     rurl = fields.get("rurl", "")
-    if rurl and base_url:
-        action = urljoin(base_url, rurl)
-    else:
-        action = _resolve_action(form, base_url)
+    action = urljoin(base_url, rurl) if rurl and base_url else _resolve_action(form, base_url)
     return {
         "action": action,
         "fields": fields,

@@ -17,15 +17,13 @@ from __future__ import annotations
 import os
 import re
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import httpx
 import pytest
 
-from kuauth import KyotoUAuth, KULASIS, KULMS, MyKULINE, PandA
-from kuauth import _parsers
+from kuauth import KULASIS, KULMS, KyotoUAuth, MyKULINE, PandA, _parsers
 from kuauth.exceptions import SPAccessError
-
 
 _UPSTREAM_5XX = re.compile(r"HTTP 5\d\d")
 
@@ -131,8 +129,7 @@ def _assert_authenticated_response(
     assert r.status_code == 200, f"got HTTP {r.status_code}"
     assert r.url.host == expected_host, f"redirected off-host to {r.url}"
     assert r.url.path.startswith(expected_path_prefix), (
-        f"redirected to unexpected path {r.url.path!r} "
-        f"(expected prefix {expected_path_prefix!r})"
+        f"redirected to unexpected path {r.url.path!r} (expected prefix {expected_path_prefix!r})"
     )
     body = r.text
     # Any of these predicates matching means we're looking at an auth wall,
@@ -165,11 +162,10 @@ def test_kulasis_top_is_readable(auth_with_totp: KyotoUAuth) -> None:
     # (unlike Sakai), so identity-level proof relies on the auth-gate
     # predicates + host/path checks in the helper rather than a
     # username string match.
-    r = _fetch_with_upstream_retry(
-        lambda: KULASIS(auth_with_totp).get("/student/la/top")
-    )
+    r = _fetch_with_upstream_retry(lambda: KULASIS(auth_with_totp).get("/student/la/top"))
     _assert_authenticated_response(
-        r, expected_host="www.k.kyoto-u.ac.jp",
+        r,
+        expected_host="www.k.kyoto-u.ac.jp",
         expected_path_prefix="/student/",
     )
 
@@ -177,7 +173,8 @@ def test_kulasis_top_is_readable(auth_with_totp: KyotoUAuth) -> None:
 def test_kulms_portal_is_readable(auth_with_totp: KyotoUAuth) -> None:
     r = _fetch_with_upstream_retry(lambda: KULMS(auth_with_totp).get("/portal"))
     _assert_authenticated_response(
-        r, expected_host="lms.gakusei.kyoto-u.ac.jp",
+        r,
+        expected_host="lms.gakusei.kyoto-u.ac.jp",
         expected_path_prefix="/portal",
     )
     # Sakai stamps the viewer's user eid into the portal DOM; the
@@ -196,11 +193,10 @@ def test_mykuline_us_info_is_readable(auth_no_totp: KyotoUAuth) -> None:
     # Uses ``auth_no_totp`` deliberately: MyKULINE routes through authidp1,
     # which only needs j_username/j_password. If this test passes without
     # ``KUAUTH_TOTP_SECRET`` in the env, the lazy-login refactor is working.
-    r = _fetch_with_upstream_retry(
-        lambda: MyKULINE(auth_no_totp).get("/opac/us_info/?lang=0")
-    )
+    r = _fetch_with_upstream_retry(lambda: MyKULINE(auth_no_totp).get("/opac/us_info/?lang=0"))
     _assert_authenticated_response(
-        r, expected_host="kuline.kulib.kyoto-u.ac.jp",
+        r,
+        expected_host="kuline.kulib.kyoto-u.ac.jp",
         expected_path_prefix="/opac/us_info/",
     )
     # us_info does not echo the EPPN, but a logged-in view always carries a
@@ -215,7 +211,8 @@ def test_panda_portal_is_readable(auth_no_totp: KyotoUAuth) -> None:
     # to pin that OTP is not required for this SP.
     r = _fetch_with_upstream_retry(lambda: PandA(auth_no_totp).get("/portal"))
     _assert_authenticated_response(
-        r, expected_host="panda.ecs.kyoto-u.ac.jp",
+        r,
+        expected_host="panda.ecs.kyoto-u.ac.jp",
         expected_path_prefix="/portal",
     )
     assert os.environ["KUAUTH_USERNAME"] in r.text, (

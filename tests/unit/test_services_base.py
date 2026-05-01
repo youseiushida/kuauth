@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from kuauth.auth import KyotoUAuth
 from kuauth.services._base import ShibbolethSPService
@@ -131,10 +130,12 @@ def test_kulasis_get_decodes_sjis():
     sjis_bytes = "京大".encode("cp932")
     svc = _ready_service(
         KULASIS,
-        {(
-            "GET",
-            "https://www.k.kyoto-u.ac.jp/student/la/top",
-        ): httpx.Response(200, content=sjis_bytes)},
+        {
+            (
+                "GET",
+                "https://www.k.kyoto-u.ac.jp/student/la/top",
+            ): httpx.Response(200, content=sjis_bytes)
+        },
     )
     r = svc.get("/student/la/top")
     assert r.encoding == "cp932"
@@ -143,9 +144,9 @@ def test_kulasis_get_decodes_sjis():
 
 
 def test_get_triggers_ensure_session_when_not_ready(monkeypatch):
-    svc = _FakeService(_auth_with_mock(
-        {("GET", "https://example.test/x"): httpx.Response(200, text="ok")}
-    ))
+    svc = _FakeService(
+        _auth_with_mock({("GET", "https://example.test/x"): httpx.Response(200, text="ok")})
+    )
     calls = {"n": 0}
 
     def fake_ensure(self):

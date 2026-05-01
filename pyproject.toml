@@ -1,6 +1,8 @@
 [project]
 name = "kuauth"
-version = "0.3.0"
+# Version is sourced from src/kuauth/__init__.py (__version__) so a
+# release bump only touches one file. See [tool.hatch.version] below.
+dynamic = ["version"]
 description = "Kyoto University SSO session bootstrapper for KULASIS / KULMS / MyKULINE / PandA."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -19,8 +21,12 @@ Issues = "https://github.com/youseiushida/kuauth/issues"
 
 [dependency-groups]
 dev = [
+    "pip-audit>=2.10.0",
+    "pyright>=1.1.409",
     "pytest>=8",
+    "pytest-cov>=7.1.0",
     "respx>=0.21",
+    "ruff>=0.15.12",
 ]
 
 [build-system]
@@ -30,6 +36,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/kuauth"]
 
+# Single source of truth for the version: parse __version__ out of
+# src/kuauth/__init__.py at build time. Bumping a release means editing
+# that one ``__version__ = "x.y.z"`` line.
+[tool.hatch.version]
+path = "src/kuauth/__init__.py"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -37,4 +49,62 @@ markers = [
     "integration: live credential tests; skipped unless KUAUTH_LIVE=1",
     "replay: respx HAR replay tests",
 ]
+# Coverage opts are deliberately NOT in addopts: integration/live runs
+# would fight the source layout and the failure mode there is "could
+# not reach IdP" which has nothing to do with coverage. CI invokes
+# ``pytest --cov`` explicitly for the unit+replay job.
 addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["src/kuauth"]
+branch = true
+# tests/ shouldn't be measured for its own coverage — it's the
+# instrument, not the thing being measured.
+omit = ["tests/*", "src/kuauth/__pycache__/*"]
+
+[tool.coverage.report]
+# Show missing line numbers so a CI failure points at the gap.
+show_missing = true
+skip_covered = false
+# Re-export __version__ etc. — these have no logic to cover.
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [".venv", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle / pyflakes baseline
+    "I",            # isort (import order)
+    "UP",           # pyupgrade (3.12 idioms)
+    "B",            # flake8-bugbear
+    "SIM",          # flake8-simplify
+    "RUF",          # ruff's own rules
+]
+ignore = [
+    # Long lines in this codebase carry wire-flow rationale comments;
+    # forcing 100-col folds obscures the narrative more than it helps.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use placeholder credentials and nested with-blocks.
+"tests/**" = ["B011", "SIM117"]
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [".venv", "dist", "**/__pycache__"]
+pythonVersion = "3.12"
+# Standard mode catches the high-value issues (undefined vars, missing
+# returns, wrong arg types) without strict mode's demand for annotations
+# on every test helper. Bump to "strict" once the surface is stable.
+typeCheckingMode = "standard"
+reportMissingTypeStubs = "none"

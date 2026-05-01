@@ -1,0 +1,6 @@
+name: kuauth/credential-leak-lib
+version: 0.0.1
+library: true
+extractor: python
+dependencies:
+  codeql/python-all: "*"

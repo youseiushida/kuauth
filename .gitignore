@@ -16,6 +16,10 @@ eggs/
 .eggs/
 lib/
 lib64/
+# The Python ``lib/`` rule above also matches our CodeQL library pack
+# at ``.github/codeql/lib/``; whitelist it so the bespoke pack ships.
+!.github/codeql/lib/
+!.github/codeql/lib/**
 parts/
 sdist/
 var/

@@ -1,6 +1,6 @@
 [project]
 name = "kuauth"
-version = "0.2.3"
+version = "0.3.0"
 description = "Kyoto University SSO session bootstrapper for KULASIS / KULMS / MyKULINE / PandA."
 readme = "README.md"
 requires-python = ">=3.12"

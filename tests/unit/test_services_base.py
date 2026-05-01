@@ -50,6 +50,20 @@ def test_resolve_relative_prepends_base():
     assert svc._resolve("/foo") == "https://example.test/foo"
 
 
+def test_resolve_relative_without_leading_slash_is_prefixed():
+    # Missing leading slash must not host-glue into "https://hostfoo".
+    svc = _FakeService(_auth_with_mock({}))
+    assert svc._resolve("foo") == "https://example.test/foo"
+    assert svc._resolve("foo/bar") == "https://example.test/foo/bar"
+
+
+def test_resolve_empty_yields_base_with_trailing_slash():
+    # Degenerate input: pin the current behavior so a future refactor
+    # doesn't silently flip between BASE_URL and BASE_URL + "/".
+    svc = _FakeService(_auth_with_mock({}))
+    assert svc._resolve("") == "https://example.test/"
+
+
 def test_get_hits_resolved_url():
     svc = _ready_service(
         _FakeService,

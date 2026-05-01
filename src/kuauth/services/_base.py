@@ -84,6 +84,11 @@ class _SPService:
     def _resolve(self, path_or_url: str) -> str:
         if path_or_url.startswith(("http://", "https://")):
             return path_or_url
+        # Auto-prepend "/" so a missing leading slash doesn't host-glue
+        # into ``https://hoststudent/la/top``. Avoid urljoin: it would
+        # resolve protocol-relative ``//other.com/x`` off-host.
+        if not path_or_url.startswith("/"):
+            path_or_url = "/" + path_or_url
         return self.BASE_URL + path_or_url
 
     def _ensure_session(self) -> None:

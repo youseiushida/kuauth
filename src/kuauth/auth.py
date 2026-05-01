@@ -15,12 +15,16 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 )
 
+_KULINE_HOST = "kuline.kulib.kyoto-u.ac.jp"
 
-def _build_ssl_context() -> ssl.SSLContext:
+
+def _build_kuline_ssl_context() -> ssl.SSLContext:
     # MyKULINE (kuline.kulib.kyoto-u.ac.jp) rejects OpenSSL 3.0's default
     # SECLEVEL=2 offer list with TLSV1_ALERT_INSUFFICIENT_SECURITY.
     # SECLEVEL=1 still enforces cert validation, 2048-bit RSA, etc. — only
-    # the SHA1-signed ciphers are re-allowed.
+    # the SHA1-signed ciphers are re-allowed. The relaxation is mounted
+    # on the kuline host alone; auth.iimc / authidp1 / KULASIS / KULMS /
+    # PandA stay on OpenSSL defaults.
     ctx = ssl.create_default_context()
     ctx.set_ciphers("DEFAULT@SECLEVEL=1")
     return ctx
@@ -77,7 +81,17 @@ class KyotoUAuth:
                 http2=True,
                 timeout=timeout,
                 headers={"User-Agent": DEFAULT_USER_AGENT},
-                verify=_build_ssl_context(),
+                # Per-host TLS: kuline gets SECLEVEL=1 (it requires SHA1
+                # ciphers to negotiate); every other host stays on
+                # OpenSSL defaults. ``http2=True`` on httpx.Client only
+                # affects the default transport, so the mounted one
+                # opts in separately.
+                mounts={
+                    f"https://{_KULINE_HOST}": httpx.HTTPTransport(
+                        verify=_build_kuline_ssl_context(),
+                        http2=True,
+                    ),
+                },
             )
         self._http = http
 

@@ -73,3 +73,14 @@ def test_default_user_agent_does_not_self_identify():
         assert "kuauth" not in DEFAULT_USER_AGENT.lower()
     finally:
         a.close()
+
+
+def test_kuline_host_constant_matches_mykuline_base_url():
+    # _KULINE_HOST in auth.py and MyKULINE.BASE_URL must agree, otherwise
+    # the per-host SECLEVEL=1 mount stops covering MyKULINE on a rename.
+    from urllib.parse import urlparse
+
+    from kuauth.auth import _KULINE_HOST
+    from kuauth.services.mykuline import MyKULINE
+
+    assert urlparse(MyKULINE.BASE_URL).hostname == _KULINE_HOST

@@ -1,0 +1,54 @@
+version: 2
+
+# Two ecosystems matter for kuauth:
+#   - ``pip``: runtime + dev Python deps declared in pyproject.toml.
+#     Dependabot reads pyproject.toml directly; uv.lock is regenerated
+#     by ``uv lock`` post-merge (Dependabot doesn't update uv.lock yet).
+#   - ``github-actions``: pin updates for the workflow steps. Without
+#     this, action versions go stale silently and we miss security
+#     patches in actions/checkout, setup-uv, etc.
+#
+# Cadence: weekly on Monday morning (JST). One bump PR per ecosystem
+# per week is the right cadence for a small library — daily generates
+# noise, monthly lets advisories sit. Security-driven updates bypass
+# the schedule and are filed immediately regardless.
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    # Group minor + patch bumps for runtime deps into one PR per week.
+    # Major bumps stay solo so they get individual review (httpx 0.x is
+    # particularly volatile; bs4 / lxml majors deserve standalone diffs).
+    groups:
+      python-runtime-minor:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      python-dev-minor:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      github-actions-all:
+        patterns: ["*"]

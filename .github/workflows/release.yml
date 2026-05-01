@@ -1,0 +1,83 @@
+name: Release
+
+# Tag-triggered PyPI publish via OIDC trusted publishing.
+#
+# To cut a release:
+#   1. Bump ``__version__`` in src/kuauth/__init__.py (only place — pyproject
+#      reads it dynamically via [tool.hatch.version]).
+#   2. Commit, push, then ``git tag vX.Y.Z && git push origin vX.Y.Z``.
+#   3. This workflow builds sdist+wheel and publishes to PyPI.
+#
+# One-time PyPI setup (do this on pypi.org once before the first run):
+#   PyPI → manage project ``kuauth`` → Publishing → Add a new pending
+#   trusted publisher with:
+#     - Owner: youseiushida
+#     - Repository: kuauth
+#     - Workflow: release.yml
+#     - Environment: pypi  (matches the ``environment:`` below)
+#   Trusted publishing replaces the legacy API token: GitHub OIDC mints a
+#   short-lived token at workflow runtime, scoped to this exact workflow
+#   and environment, so a leaked token can never be a leaked PyPI token.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      # Verify the tag matches the in-source version. Mismatched tags are
+      # the most common release bug ("I tagged v0.4.0 but forgot to bump
+      # __version__") and PyPI's idempotency makes the bad upload sticky,
+      # so fail loudly here before publishing.
+      - name: Verify tag matches __version__
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(uv run --no-project python -c "import re,pathlib; \
+            m=re.search(r'^__version__\s*=\s*[\"\']([^\"\']+)', \
+            pathlib.Path('src/kuauth/__init__.py').read_text(), re.M); \
+            print(m.group(1))")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match __version__ $PKG"
+            exit 1
+          fi
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The ``pypi`` environment scopes the OIDC trust on the PyPI side; it
+    # also allows reviewers (when configured in repo settings → environments
+    # → pypi → required reviewers) to gate publishes behind manual approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/kuauth
+    permissions:
+      # Required for OIDC trusted publishing — mints the short-lived token
+      # that pypi-publish exchanges for an upload credential.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        # No ``with: password:`` — trusted publishing handles auth via OIDC.

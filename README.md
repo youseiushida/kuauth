@@ -2,8 +2,10 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/kuauth.svg)](https://pypi.org/project/kuauth/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Live integration](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml/badge.svg?event=schedule)](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml)
+[![CI](https://github.com/youseiushida/kuauth/actions/workflows/ci.yml/badge.svg)](https://github.com/youseiushida/kuauth/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/youseiushida/kuauth/branch/main/graph/badge.svg)](https://codecov.io/gh/youseiushida/kuauth)
 [![CodeQL](https://github.com/youseiushida/kuauth/actions/workflows/codeql.yml/badge.svg)](https://github.com/youseiushida/kuauth/actions/workflows/codeql.yml)
+[![Live integration](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml/badge.svg?event=schedule)](https://github.com/youseiushida/kuauth/actions/workflows/live-integration.yml)
 [![Context7 Indexed](https://img.shields.io/badge/Context7-Indexed-047857)](https://context7.com/youseiushida/kuauth)
 [![Context7 llms.txt](https://img.shields.io/badge/Context7-llms.txt-047857)](https://context7.com/youseiushida/kuauth/llms.txt)
 

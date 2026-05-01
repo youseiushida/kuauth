@@ -68,7 +68,6 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
-          setup-python-dependencies: false
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
@@ -108,13 +107,25 @@ jobs:
       - name: Pin kuauth surface invariants (pytest)
         run: uv run pytest tests/unit/test_codeql_query_surface.py -v
 
-      # init@v3 installs the CodeQL CLI on PATH; we don't actually run
-      # ``analyze`` from this job, just borrow the CLI for ``test run``.
+      # init@v3 installs the CodeQL CLI into the runner tool cache. In
+      # principle it also adds the binary to PATH for subsequent steps,
+      # but we hit ``codeql: command not found`` in practice on
+      # ubuntu-latest with v3.35.x. Locating it ourselves and exporting
+      # via GITHUB_PATH is more robust against that PATH-export drift.
       - name: Initialize CodeQL (for CLI only)
         uses: github/codeql-action/init@v3
         with:
           languages: python
-          setup-python-dependencies: false
+
+      - name: Expose CodeQL CLI on PATH
+        run: |
+          CODEQL_BIN="$(find /opt/hostedtoolcache/CodeQL -name codeql -type f -executable 2>/dev/null | head -1)"
+          if [ -z "$CODEQL_BIN" ]; then
+            echo "::error::CodeQL CLI not found in tool cache after init"
+            exit 1
+          fi
+          echo "Located CodeQL at $CODEQL_BIN"
+          dirname "$CODEQL_BIN" >> "$GITHUB_PATH"
 
       - name: Resolve pack dependencies
         run: |

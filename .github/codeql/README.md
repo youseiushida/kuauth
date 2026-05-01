@@ -13,9 +13,16 @@ files. This avoids the "references a local library, not the named
 module" warning that CodeQL emits when query packs reach across to
 helper `.qll` files.
 
+The workspace file lives at the REPO ROOT (`codeql-workspace.yml`)
+rather than under `.github/codeql/`, because GitHub's CodeQL Action
+runs `codeql database init` from the repo root and walks for the
+workspace from there. A workspace file deeper than that is silently
+ignored, leading to "Pack X was not found locally" failures on CI
+even though `codeql test run` works fine on a developer machine.
+
 ```
+codeql-workspace.yml         # at repo root: lists the 3 local packs
 .github/codeql/
-  .codeqlmanifest.json       # workspace manifest (3 packs)
   codeql-config.yml          # which queries run, which paths to scan
   README.md                  # (this file)
   lib/

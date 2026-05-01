@@ -1,7 +1,0 @@
-{
-  "provide": [
-    "lib/qlpack.yml",
-    "queries/qlpack.yml",
-    "queries/tests/qlpack.yml"
-  ]
-}

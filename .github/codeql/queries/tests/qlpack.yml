@@ -3,5 +3,6 @@ version: 0.0.1
 extractor: python
 tests: .
 dependencies:
-  kuauth/credential-leak-queries: "*"
+  # Sibling local pack — resolved via codeql-workspace.yml at repo root.
+  kuauth/credential-leak-queries: ${workspace}
   codeql/python-all: "*"

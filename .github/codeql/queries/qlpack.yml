@@ -3,6 +3,9 @@ version: 0.0.1
 library: false
 dependencies:
   codeql/python-all: "*"
-  kuauth/credential-leak-lib: "*"
+  # ``${workspace}`` resolves through ``codeql-workspace.yml`` at the
+  # repo root. The lib pack is unpublished, so ``"*"`` would force
+  # registry lookup and fail.
+  kuauth/credential-leak-lib: ${workspace}
 suites: codeql-suites
 defaultSuiteFile: codeql-suites/credential-leak.qls

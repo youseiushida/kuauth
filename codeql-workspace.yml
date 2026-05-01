@@ -1,0 +1,14 @@
+# CodeQL workspace file. Lets the bespoke local packs under
+# ``.github/codeql/`` resolve their inter-pack dependencies (the
+# ``${workspace}`` version specifier in
+# ``.github/codeql/queries/qlpack.yml`` and
+# ``.github/codeql/queries/tests/qlpack.yml``).
+#
+# Without this, ``codeql database init`` on the codeql-action side fails
+# with "Pack 'kuauth/credential-leak-lib' was not found locally" because
+# unpublished local packs are not in the lock file and the action has
+# no other way to find them.
+provide:
+  - .github/codeql/lib/qlpack.yml
+  - .github/codeql/queries/qlpack.yml
+  - .github/codeql/queries/tests/qlpack.yml

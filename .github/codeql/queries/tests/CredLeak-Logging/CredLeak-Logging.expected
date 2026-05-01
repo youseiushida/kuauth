@@ -1,0 +1,26 @@
+WARNING: reference to 'KuauthSinks' references a local library, not the named module (CredLeak-Logging.ql:24,8-19)
+WARNING: reference to 'KuauthSources' references a local library, not the named module (CredLeak-Logging.ql:23,8-21)
+edges
+| test.py:40:5:40:7 | ControlFlowNode for otp | test.py:41:11:41:22 | ControlFlowNode for Fstring | provenance |  |
+| test.py:40:11:40:29 | ControlFlowNode for Attribute() | test.py:40:5:40:7 | ControlFlowNode for otp | provenance |  |
+| test.py:45:37:45:50 | ControlFlowNode for Attribute | test.py:45:19:45:52 | ControlFlowNode for Fstring | provenance |  |
+nodes
+| test.py:32:17:32:29 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:36:33:36:45 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:40:5:40:7 | ControlFlowNode for otp | semmle.label | ControlFlowNode for otp |
+| test.py:40:11:40:29 | ControlFlowNode for Attribute() | semmle.label | ControlFlowNode for Attribute() |
+| test.py:41:11:41:22 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:45:19:45:52 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:45:37:45:50 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:49:22:49:35 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:53:30:53:46 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:57:33:57:45 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+subpaths
+#select
+| test.py:32:17:32:29 | ControlFlowNode for Attribute | test.py:32:17:32:29 | ControlFlowNode for Attribute | test.py:32:17:32:29 | ControlFlowNode for Attribute | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:32:17:32:29 | ControlFlowNode for Attribute | this credential read |
+| test.py:36:33:36:45 | ControlFlowNode for Attribute | test.py:36:33:36:45 | ControlFlowNode for Attribute | test.py:36:33:36:45 | ControlFlowNode for Attribute | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:36:33:36:45 | ControlFlowNode for Attribute | this credential read |
+| test.py:41:11:41:22 | ControlFlowNode for Fstring | test.py:40:11:40:29 | ControlFlowNode for Attribute() | test.py:41:11:41:22 | ControlFlowNode for Fstring | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:40:11:40:29 | ControlFlowNode for Attribute() | this credential read |
+| test.py:45:19:45:52 | ControlFlowNode for Fstring | test.py:45:37:45:50 | ControlFlowNode for Attribute | test.py:45:19:45:52 | ControlFlowNode for Fstring | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:45:37:45:50 | ControlFlowNode for Attribute | this credential read |
+| test.py:49:22:49:35 | ControlFlowNode for Attribute | test.py:49:22:49:35 | ControlFlowNode for Attribute | test.py:49:22:49:35 | ControlFlowNode for Attribute | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:49:22:49:35 | ControlFlowNode for Attribute | this credential read |
+| test.py:53:30:53:46 | ControlFlowNode for Attribute | test.py:53:30:53:46 | ControlFlowNode for Attribute | test.py:53:30:53:46 | ControlFlowNode for Attribute | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:53:30:53:46 | ControlFlowNode for Attribute | this credential read |
+| test.py:57:33:57:45 | ControlFlowNode for Attribute | test.py:57:33:57:45 | ControlFlowNode for Attribute | test.py:57:33:57:45 | ControlFlowNode for Attribute | Credential value from $@ flows to a logging sink, exposing it to operators. | test.py:57:33:57:45 | ControlFlowNode for Attribute | this credential read |

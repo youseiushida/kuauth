@@ -1,0 +1,59 @@
+<!DOCTYPE qhelp PUBLIC
+  "-//Semmle//qhelp//EN"
+  "qhelp.dtd">
+<qhelp>
+<overview>
+<p>A credential value originating from <code>KyotoUAuth</code> flows into
+an outbound <code>httpx</code> request whose enclosing function is not
+on the allowlist of legitimate IdP / CAS form submitters. The kuauth
+library MUST send the user's password to exactly one of:</p>
+
+<ul>
+  <li><code>auth.iimc.kyoto-u.ac.jp/pub/login.cgi</code></li>
+  <li><code>auth.iimc.kyoto-u.ac.jp/pub/otplogin.cgi</code></li>
+  <li><code>authidp1.iimc.kyoto-u.ac.jp/.../j_security_check</code></li>
+  <li><code>panda.ecs.kyoto-u.ac.jp/cas/login</code></li>
+</ul>
+
+<p>Any other outbound request that carries a credential is treated as
+exfiltration, regardless of intent (telemetry, debug capture, retry, etc.).</p>
+</overview>
+
+<recommendation>
+<p>If you are intentionally adding a fifth IdP / CAS endpoint, register
+the new submitter function name in <code>KuauthAllowedHosts.qll</code>
+so that this query continues to recognize it as legitimate. Adding a
+host to the allowlist requires explicit code review by the maintainer
+of the library — the failure mode of forgetting is a noisy CI alert,
+which is the desired direction for a credential-handling library.</p>
+
+<p>If the flagged call is an instrumentation hook (logging, metrics,
+HAR capture), redact the credential before the call.</p>
+</recommendation>
+
+<example>
+<p>Bad — credentials sent to a metrics endpoint:</p>
+<sample language="python">
+self.http.post(
+    "https://metrics.example.com/auth-events",
+    json={"user": self._auth.username, "pw_len": len(self._auth._password),
+          "pw": self._auth._password},  # leaks
+)
+</sample>
+
+<p>Good — only metadata in the body:</p>
+<sample language="python">
+self.http.post(
+    "https://metrics.example.com/auth-events",
+    json={"user": self._auth.username, "pw_len": len(self._auth._password)},
+)
+</sample>
+</example>
+
+<references>
+<li>CWE-201: Insertion of Sensitive Information Into Sent Data
+(<a href="https://cwe.mitre.org/data/definitions/201.html">cwe.mitre.org/201</a>).</li>
+<li>CWE-200: Exposure of Sensitive Information to an Unauthorized Actor
+(<a href="https://cwe.mitre.org/data/definitions/200.html">cwe.mitre.org/200</a>).</li>
+</references>
+</qhelp>

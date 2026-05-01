@@ -1,0 +1,59 @@
+<!DOCTYPE qhelp PUBLIC
+  "-//Semmle//qhelp//EN"
+  "qhelp.dtd">
+<qhelp>
+<overview>
+<p>A credential value originating from <code>KyotoUAuth</code> reaches a
+sink that persists it to disk or to a serialization buffer:
+<code>open().write</code>, <code>pathlib.Path.write_text</code>,
+<code>json.dump</code> / <code>json.dumps</code>,
+<code>pickle.dump</code> / <code>pickle.dumps</code>, or a
+<code>csv.writer</code> row. The kuauth library does not own a credential
+store and must never write the user's password or TOTP secret to a
+file.</p>
+</overview>
+
+<recommendation>
+<p>Credentials are inputs to the library, not outputs. If the user wants
+persistence (e.g. for unattended cron jobs), they configure
+<code>totp_secret</code> at construction time and the library reads it
+into memory. Do not introduce caches, debug dumps, or HAR captures that
+include credential fields.</p>
+
+<p>If you legitimately need to record an HTTP exchange for replay tests,
+strip the <code>password</code> / <code>j_password</code> / OTP fields
+from the captured form data before writing the HAR. The
+<code>tests/replay</code> fixtures in this repo do exactly that.</p>
+</recommendation>
+
+<example>
+<p>Bad — caches the password to disk:</p>
+<sample language="python">
+import json
+from pathlib import Path
+
+def cache_creds(auth):
+    Path(".kuauth-cache.json").write_text(
+        json.dumps({"user": auth.username, "pw": auth._password})
+    )
+</sample>
+
+<p>Good — caches only non-sensitive metadata:</p>
+<sample language="python">
+import json
+from pathlib import Path
+
+def cache_creds(auth):
+    Path(".kuauth-cache.json").write_text(
+        json.dumps({"user": auth.username})
+    )
+</sample>
+</example>
+
+<references>
+<li>CWE-312: Cleartext Storage of Sensitive Information
+(<a href="https://cwe.mitre.org/data/definitions/312.html">cwe.mitre.org/312</a>).</li>
+<li>CWE-313: Cleartext Storage in a File or on Disk
+(<a href="https://cwe.mitre.org/data/definitions/313.html">cwe.mitre.org/313</a>).</li>
+</references>
+</qhelp>

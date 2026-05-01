@@ -1,0 +1,28 @@
+WARNING: reference to 'KuauthSinks' references a local library, not the named module (CredLeak-Disk.ql:23,8-19)
+WARNING: reference to 'KuauthSources' references a local library, not the named module (CredLeak-Disk.ql:22,8-21)
+edges
+| test.py:39:5:39:11 | ControlFlowNode for payload | test.py:40:16:40:22 | ControlFlowNode for payload | provenance |  |
+| test.py:39:45:39:58 | ControlFlowNode for Attribute | test.py:39:5:39:11 | ControlFlowNode for payload | provenance |  |
+| test.py:45:27:45:45 | ControlFlowNode for Attribute() | test.py:45:19:45:46 | ControlFlowNode for Dict | provenance |  |
+| test.py:49:27:49:43 | ControlFlowNode for Attribute | test.py:49:18:49:44 | ControlFlowNode for Dict | provenance |  |
+| test.py:55:36:55:49 | ControlFlowNode for Attribute | test.py:55:20:55:50 | ControlFlowNode for List | provenance |  |
+nodes
+| test.py:31:17:31:30 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:35:39:35:51 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:39:5:39:11 | ControlFlowNode for payload | semmle.label | ControlFlowNode for payload |
+| test.py:39:45:39:58 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:40:16:40:22 | ControlFlowNode for payload | semmle.label | ControlFlowNode for payload |
+| test.py:45:19:45:46 | ControlFlowNode for Dict | semmle.label | ControlFlowNode for Dict |
+| test.py:45:27:45:45 | ControlFlowNode for Attribute() | semmle.label | ControlFlowNode for Attribute() |
+| test.py:49:18:49:44 | ControlFlowNode for Dict | semmle.label | ControlFlowNode for Dict |
+| test.py:49:27:49:43 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:55:20:55:50 | ControlFlowNode for List | semmle.label | ControlFlowNode for List |
+| test.py:55:36:55:49 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+subpaths
+#select
+| test.py:31:17:31:30 | ControlFlowNode for Attribute | test.py:31:17:31:30 | ControlFlowNode for Attribute | test.py:31:17:31:30 | ControlFlowNode for Attribute | Credential value from $@ is written to disk in cleartext. | test.py:31:17:31:30 | ControlFlowNode for Attribute | this credential read |
+| test.py:35:39:35:51 | ControlFlowNode for Attribute | test.py:35:39:35:51 | ControlFlowNode for Attribute | test.py:35:39:35:51 | ControlFlowNode for Attribute | Credential value from $@ is written to disk in cleartext. | test.py:35:39:35:51 | ControlFlowNode for Attribute | this credential read |
+| test.py:40:16:40:22 | ControlFlowNode for payload | test.py:39:45:39:58 | ControlFlowNode for Attribute | test.py:40:16:40:22 | ControlFlowNode for payload | Credential value from $@ is written to disk in cleartext. | test.py:39:45:39:58 | ControlFlowNode for Attribute | this credential read |
+| test.py:45:19:45:46 | ControlFlowNode for Dict | test.py:45:27:45:45 | ControlFlowNode for Attribute() | test.py:45:19:45:46 | ControlFlowNode for Dict | Credential value from $@ is written to disk in cleartext. | test.py:45:27:45:45 | ControlFlowNode for Attribute() | this credential read |
+| test.py:49:18:49:44 | ControlFlowNode for Dict | test.py:49:27:49:43 | ControlFlowNode for Attribute | test.py:49:18:49:44 | ControlFlowNode for Dict | Credential value from $@ is written to disk in cleartext. | test.py:49:27:49:43 | ControlFlowNode for Attribute | this credential read |
+| test.py:55:20:55:50 | ControlFlowNode for List | test.py:55:36:55:49 | ControlFlowNode for Attribute | test.py:55:20:55:50 | ControlFlowNode for List | Credential value from $@ is written to disk in cleartext. | test.py:55:36:55:49 | ControlFlowNode for Attribute | this credential read |

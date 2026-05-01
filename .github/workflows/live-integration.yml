@@ -37,16 +37,23 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync
 
-      # Fail fast if someone forgot to configure the secret, before we
-      # ever hit the IdP with an empty password.
-      - name: Verify secrets are present
+      # Fail fast if USERNAME/PASSWORD are missing — without those,
+      # every test would hit the IdP with empty credentials and risk
+      # account lockout. TOTP_SECRET is intentionally optional: when
+      # absent, the OTP-gated KULASIS/KULMS tests skip themselves but
+      # MyKULINE/PandA still run. Hard-failing here would lose all
+      # non-OTP coverage during a TOTP rotation.
+      - name: Verify required secrets are present
         run: |
-          for v in KUAUTH_USERNAME KUAUTH_PASSWORD KUAUTH_TOTP_SECRET; do
+          for v in KUAUTH_USERNAME KUAUTH_PASSWORD; do
             if [ -z "${!v}" ]; then
               echo "::error::$v is empty; configure it in repo secrets"
               exit 1
             fi
           done
+          if [ -z "$KUAUTH_TOTP_SECRET" ]; then
+            echo "::warning::KUAUTH_TOTP_SECRET is empty; KULASIS/KULMS tests will skip"
+          fi
 
       # --maxfail=1: stop at the first failure so a broken fixture can't
       #   trigger a second login attempt against the IdP.

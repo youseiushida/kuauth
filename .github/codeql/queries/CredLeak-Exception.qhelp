@@ -1,0 +1,45 @@
+<!DOCTYPE qhelp PUBLIC
+  "-//Semmle//qhelp//EN"
+  "qhelp.dtd">
+<qhelp>
+<overview>
+<p>A credential value originating from <code>KyotoUAuth</code> reaches the
+argument of a <code>raise</code> statement or an exception constructor.
+Exception messages are rendered into stack traces, captured by
+<code>logging.exception</code>, and forwarded to error reporting tools
+(Sentry, Rollbar, Bugsnag, etc.). A password embedded in such a message
+will be stored, indexed, and possibly displayed to anyone with access to
+those systems.</p>
+</overview>
+
+<recommendation>
+<p>Reference credentials only by metadata in error messages — say "OTP
+rejected" rather than "OTP <code>123456</code> rejected". The
+<code>kuauth</code> library already follows this convention for the
+<code>AuthenticationError</code> messages raised inside
+<code>_advance_through_idp</code>.</p>
+</recommendation>
+
+<example>
+<p>Bad — the password ends up in the traceback:</p>
+<sample language="python">
+if not response.ok:
+    raise AuthenticationError(
+        f"login failed: user={self._username} password={self._password}"
+    )
+</sample>
+
+<p>Good — keep the password out of the message:</p>
+<sample language="python">
+if not response.ok:
+    raise AuthenticationError(
+        f"login failed for user={self._username}"
+    )
+</sample>
+</example>
+
+<references>
+<li>CWE-209: Generation of Error Message Containing Sensitive Information
+(<a href="https://cwe.mitre.org/data/definitions/209.html">cwe.mitre.org/209</a>).</li>
+</references>
+</qhelp>

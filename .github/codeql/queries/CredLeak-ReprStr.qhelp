@@ -1,0 +1,40 @@
+<!DOCTYPE qhelp PUBLIC
+  "-//Semmle//qhelp//EN"
+  "qhelp.dtd">
+<qhelp>
+<overview>
+<p>A credential value originating from <code>KyotoUAuth</code> is returned
+from a <code>__repr__</code> or <code>__str__</code> method. These
+methods are invoked implicitly any time the object is printed, formatted
+into an f-string, displayed in a debugger, or dumped as part of frame
+locals in a stack trace. A password embedded in their return value is
+trivially exposed.</p>
+</overview>
+
+<recommendation>
+<p>Render only non-sensitive identifying information from
+<code>__repr__</code> / <code>__str__</code>. The <code>username</code>
+and class name are typically enough.</p>
+</recommendation>
+
+<example>
+<p>Bad:</p>
+<sample language="python">
+class KyotoUAuth:
+    def __repr__(self) -> str:
+        return f"KyotoUAuth(user={self._username}, pw={self._password})"
+</sample>
+
+<p>Good:</p>
+<sample language="python">
+class KyotoUAuth:
+    def __repr__(self) -> str:
+        return f"KyotoUAuth(user={self._username})"
+</sample>
+</example>
+
+<references>
+<li>CWE-200: Exposure of Sensitive Information to an Unauthorized Actor
+(<a href="https://cwe.mitre.org/data/definitions/200.html">cwe.mitre.org/200</a>).</li>
+</references>
+</qhelp>

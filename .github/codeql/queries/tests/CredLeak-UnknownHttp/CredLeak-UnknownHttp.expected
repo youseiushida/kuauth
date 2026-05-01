@@ -1,0 +1,35 @@
+WARNING: reference to 'KuauthAllowedHosts' references a local library, not the named module (CredLeak-UnknownHttp.ql:25,8-26)
+WARNING: reference to 'KuauthSinks' references a local library, not the named module (CredLeak-UnknownHttp.ql:24,8-19)
+WARNING: reference to 'KuauthSources' references a local library, not the named module (CredLeak-UnknownHttp.ql:23,8-21)
+edges
+| test.py:69:25:69:44 | ControlFlowNode for Attribute | test.py:69:18:69:45 | ControlFlowNode for Dict | provenance |  |
+| test.py:74:57:74:79 | ControlFlowNode for Attribute | test.py:74:23:74:81 | ControlFlowNode for Fstring | provenance |  |
+| test.py:80:30:80:49 | ControlFlowNode for Attribute | test.py:80:21:80:50 | ControlFlowNode for Dict | provenance |  |
+| test.py:94:31:94:50 | ControlFlowNode for Attribute | test.py:94:18:94:51 | ControlFlowNode for Dict | provenance |  |
+| test.py:106:47:106:69 | ControlFlowNode for Attribute | test.py:106:13:106:71 | ControlFlowNode for Fstring | provenance |  |
+| test.py:113:43:113:62 | ControlFlowNode for Attribute | test.py:113:13:113:64 | ControlFlowNode for Fstring | provenance |  |
+| test.py:121:51:121:73 | ControlFlowNode for Attribute | test.py:121:17:121:75 | ControlFlowNode for Fstring | provenance |  |
+nodes
+| test.py:69:18:69:45 | ControlFlowNode for Dict | semmle.label | ControlFlowNode for Dict |
+| test.py:69:25:69:44 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:74:23:74:81 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:74:57:74:79 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:80:21:80:50 | ControlFlowNode for Dict | semmle.label | ControlFlowNode for Dict |
+| test.py:80:30:80:49 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:94:18:94:51 | ControlFlowNode for Dict | semmle.label | ControlFlowNode for Dict |
+| test.py:94:31:94:50 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:106:13:106:71 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:106:47:106:69 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:113:13:113:64 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:113:43:113:62 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:121:17:121:75 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:121:51:121:73 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+subpaths
+#select
+| test.py:69:18:69:45 | ControlFlowNode for Dict | test.py:69:25:69:44 | ControlFlowNode for Attribute | test.py:69:18:69:45 | ControlFlowNode for Dict | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:69:25:69:44 | ControlFlowNode for Attribute | this credential read |
+| test.py:74:23:74:81 | ControlFlowNode for Fstring | test.py:74:57:74:79 | ControlFlowNode for Attribute | test.py:74:23:74:81 | ControlFlowNode for Fstring | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:74:57:74:79 | ControlFlowNode for Attribute | this credential read |
+| test.py:80:21:80:50 | ControlFlowNode for Dict | test.py:80:30:80:49 | ControlFlowNode for Attribute | test.py:80:21:80:50 | ControlFlowNode for Dict | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:80:30:80:49 | ControlFlowNode for Attribute | this credential read |
+| test.py:94:18:94:51 | ControlFlowNode for Dict | test.py:94:31:94:50 | ControlFlowNode for Attribute | test.py:94:18:94:51 | ControlFlowNode for Dict | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:94:31:94:50 | ControlFlowNode for Attribute | this credential read |
+| test.py:106:13:106:71 | ControlFlowNode for Fstring | test.py:106:47:106:69 | ControlFlowNode for Attribute | test.py:106:13:106:71 | ControlFlowNode for Fstring | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:106:47:106:69 | ControlFlowNode for Attribute | this credential read |
+| test.py:113:13:113:64 | ControlFlowNode for Fstring | test.py:113:43:113:62 | ControlFlowNode for Attribute | test.py:113:13:113:64 | ControlFlowNode for Fstring | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:113:43:113:62 | ControlFlowNode for Attribute | this credential read |
+| test.py:121:17:121:75 | ControlFlowNode for Fstring | test.py:121:51:121:73 | ControlFlowNode for Attribute | test.py:121:17:121:75 | ControlFlowNode for Fstring | Credential value from $@ is sent in an HTTP request outside the IdP/CAS allowlist. | test.py:121:51:121:73 | ControlFlowNode for Attribute | this credential read |

@@ -68,15 +68,21 @@ def _creds() -> tuple[str, str, str | None]:
     ``KUAUTH_TOTP_SECRET`` is optional post-refactor — MyKULINE and PandA
     don't need it. Tests that do need it depend on ``auth_with_totp``,
     which skips when it's absent.
+
+    GitHub Actions expands an undefined ``secrets.X`` to ``""`` rather
+    than leaving it unset, so ``os.environ.get`` would return an empty
+    string instead of ``None``. Treat empty/whitespace as absent so the
+    fixture skip path matches both the unset-locally and unset-in-CI
+    cases.
     """
     try:
-        return (
-            os.environ["KUAUTH_USERNAME"],
-            os.environ["KUAUTH_PASSWORD"],
-            os.environ.get("KUAUTH_TOTP_SECRET"),
-        )
+        user = os.environ["KUAUTH_USERNAME"]
+        pw = os.environ["KUAUTH_PASSWORD"]
     except KeyError as e:
         pytest.skip(f"missing env var: {e.args[0]}")
+    totp_raw = os.environ.get("KUAUTH_TOTP_SECRET", "").strip()
+    totp = totp_raw or None
+    return user, pw, totp
 
 
 @pytest.fixture(scope="module")

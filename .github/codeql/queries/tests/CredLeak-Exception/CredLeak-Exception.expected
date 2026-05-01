@@ -1,0 +1,28 @@
+WARNING: reference to 'KuauthSinks' references a local library, not the named module (CredLeak-Exception.ql:22,8-19)
+WARNING: reference to 'KuauthSources' references a local library, not the named module (CredLeak-Exception.ql:21,8-21)
+edges
+| test.py:29:45:29:58 | ControlFlowNode for Attribute | test.py:29:31:29:60 | ControlFlowNode for Fstring | provenance |  |
+| test.py:37:5:37:7 | ControlFlowNode for otp | test.py:38:31:38:51 | ControlFlowNode for Fstring | provenance |  |
+| test.py:37:11:37:29 | ControlFlowNode for Attribute() | test.py:37:5:37:7 | ControlFlowNode for otp | provenance |  |
+| test.py:42:35:42:51 | ControlFlowNode for Attribute | test.py:42:22:42:53 | ControlFlowNode for Fstring | provenance |  |
+| test.py:46:5:46:7 | ControlFlowNode for msg | test.py:47:31:47:33 | ControlFlowNode for msg | provenance |  |
+| test.py:46:25:46:38 | ControlFlowNode for Attribute | test.py:46:5:46:7 | ControlFlowNode for msg | provenance |  |
+nodes
+| test.py:29:31:29:60 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:29:45:29:58 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:33:31:33:43 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:37:5:37:7 | ControlFlowNode for otp | semmle.label | ControlFlowNode for otp |
+| test.py:37:11:37:29 | ControlFlowNode for Attribute() | semmle.label | ControlFlowNode for Attribute() |
+| test.py:38:31:38:51 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:42:22:42:53 | ControlFlowNode for Fstring | semmle.label | ControlFlowNode for Fstring |
+| test.py:42:35:42:51 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:46:5:46:7 | ControlFlowNode for msg | semmle.label | ControlFlowNode for msg |
+| test.py:46:25:46:38 | ControlFlowNode for Attribute | semmle.label | ControlFlowNode for Attribute |
+| test.py:47:31:47:33 | ControlFlowNode for msg | semmle.label | ControlFlowNode for msg |
+subpaths
+#select
+| test.py:29:31:29:60 | ControlFlowNode for Fstring | test.py:29:45:29:58 | ControlFlowNode for Attribute | test.py:29:31:29:60 | ControlFlowNode for Fstring | Credential value from $@ flows into an exception message; it will surface in stack traces. | test.py:29:45:29:58 | ControlFlowNode for Attribute | this credential read |
+| test.py:33:31:33:43 | ControlFlowNode for Attribute | test.py:33:31:33:43 | ControlFlowNode for Attribute | test.py:33:31:33:43 | ControlFlowNode for Attribute | Credential value from $@ flows into an exception message; it will surface in stack traces. | test.py:33:31:33:43 | ControlFlowNode for Attribute | this credential read |
+| test.py:38:31:38:51 | ControlFlowNode for Fstring | test.py:37:11:37:29 | ControlFlowNode for Attribute() | test.py:38:31:38:51 | ControlFlowNode for Fstring | Credential value from $@ flows into an exception message; it will surface in stack traces. | test.py:37:11:37:29 | ControlFlowNode for Attribute() | this credential read |
+| test.py:42:22:42:53 | ControlFlowNode for Fstring | test.py:42:35:42:51 | ControlFlowNode for Attribute | test.py:42:22:42:53 | ControlFlowNode for Fstring | Credential value from $@ flows into an exception message; it will surface in stack traces. | test.py:42:35:42:51 | ControlFlowNode for Attribute | this credential read |
+| test.py:47:31:47:33 | ControlFlowNode for msg | test.py:46:25:46:38 | ControlFlowNode for Attribute | test.py:47:31:47:33 | ControlFlowNode for msg | Credential value from $@ flows into an exception message; it will surface in stack traces. | test.py:46:25:46:38 | ControlFlowNode for Attribute | this credential read |

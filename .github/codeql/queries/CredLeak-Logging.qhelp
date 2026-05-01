@@ -1,0 +1,44 @@
+<!DOCTYPE qhelp PUBLIC
+  "-//Semmle//qhelp//EN"
+  "qhelp.dtd">
+<qhelp>
+<overview>
+<p>A credential value originating from <code>KyotoUAuth</code> reaches a
+logging call. Anything written to <code>logging</code>, <code>print</code>,
+<code>warnings.warn</code>, <code>sys.stdout.write</code> /
+<code>sys.stderr.write</code>, or <code>traceback.print_*</code> is
+collected by the host's stdout/stderr and forwarded to whatever
+observability pipeline the user has wired up. A password or TOTP secret
+that lands there is, for practical purposes, leaked.</p>
+</overview>
+
+<recommendation>
+<p>Never log a credential. If a debug message needs to reference an OTP,
+log a fixed placeholder (<code>"otp=&lt;redacted&gt;"</code>) or a length
+indicator only. Stack traces that would otherwise dump locals should be
+suppressed via <code>--tb=short</code> in pytest or
+<code>logger.exception(..., exc_info=False)</code> in production
+handlers.</p>
+</recommendation>
+
+<example>
+<p>Bad — the OTP value is rendered into the log line:</p>
+<sample language="python">
+otp = self._auth._resolve_otp()
+logger.debug("submitting otp %s", otp)  # leaks
+</sample>
+
+<p>Good — log only metadata:</p>
+<sample language="python">
+otp = self._auth._resolve_otp()
+logger.debug("submitting otp (len=%d)", len(otp))
+</sample>
+</example>
+
+<references>
+<li>CWE-532: Insertion of Sensitive Information into Log File
+(<a href="https://cwe.mitre.org/data/definitions/532.html">cwe.mitre.org/532</a>).</li>
+<li>OWASP Logging Cheat Sheet — "Data to exclude" section
+(<a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html">owasp.org</a>).</li>
+</references>
+</qhelp>

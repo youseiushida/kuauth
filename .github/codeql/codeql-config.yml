@@ -1,0 +1,35 @@
+name: kuauth security analysis
+
+# ``queries:`` in a CodeQL config is additive on top of the default
+# ``code-scanning`` suite. ``security-extended`` is a strict superset of
+# ``code-scanning``, so without ``disable-default-queries`` we'd run the
+# default suite redundantly (slower, no extra alerts because CodeQL
+# deduplicates by query id). Disable it explicitly to keep this exactly
+# at the two layers documented below.
+disable-default-queries: true
+
+# Two query layers:
+#   - security-extended: GitHub's curated Python suite (clear-text
+#     logging, hardcoded creds, weak crypto, etc. — superset of the
+#     default ``code-scanning`` suite).
+#   - Local pack: the bespoke taint queries pinned to KyotoUAuth
+#     credential surfaces.
+queries:
+  - uses: security-extended
+  - uses: ./.github/codeql/queries
+
+# Scope to production code only. The ``tests/`` tree intentionally
+# contains placeholder credentials (``totp_secret="JBSWY3DPEHPK3PXP"`` in
+# tests/unit/test_auth.py, tests/replay/test_kulasis.py, etc.) — including
+# it would surface ``py/hardcoded-credentials`` from the security-extended
+# suite for every fixture. The custom queries are pinned to the
+# library's credential surfaces and don't need to see test code either:
+# any flow they care about originates inside ``src/kuauth``.
+paths:
+  - src/kuauth
+
+# Defense in depth: even if ``paths`` is widened later, keep these out.
+paths-ignore:
+  - .venv
+  - tests
+  - "**/__pycache__"

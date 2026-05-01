@@ -1,0 +1,126 @@
+name: CodeQL
+
+# Static analysis for credential-handling code paths. Two layers:
+#  1. ``security-extended`` — GitHub's curated Python security suite.
+#  2. The local pack at ``.github/codeql/queries`` — bespoke taint queries
+#     pinned to ``KyotoUAuth.password`` / ``_totp_secret`` / ``_resolve_otp``
+#     and the four legitimate IdP/CAS form-submit sinks.
+#
+# We do NOT trigger on every fork PR write because CodeQL alerts surface
+# in the Security tab; a pull_request from a fork only gets a check run,
+# the alert itself only lands on push to main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly re-scan picks up new rules in security-extended even when the
+    # codebase hasn't changed. Mondays 03:00 UTC = 12:00 JST, off-peak.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv installs the project so CodeQL's Python extractor can resolve
+      # imports of ``httpx`` / ``bs4`` / ``pyotp`` and follow taint into
+      # third-party signatures (improves precision on httpx sinks).
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync
+
+      # Put the uv venv on PATH and PYTHONPATH BEFORE init so the
+      # extractor picks up the right interpreter and resolves
+      # ``import kuauth`` against the source tree. With
+      # ``setup-python-dependencies: false`` below, init does NOT try to
+      # auto-install — it uses whatever interpreter PATH points at.
+      - name: Expose uv venv to CodeQL
+        run: |
+          echo "$(pwd)/.venv/bin" >> "$GITHUB_PATH"
+          echo "PYTHONPATH=$(pwd)/src" >> "$GITHUB_ENV"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
+          setup-python-dependencies: false
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
+
+  query-tests:
+    # Two layers of protection for the bespoke pack:
+    #
+    # 1. ``pytest tests/unit/test_codeql_query_surface.py`` pins the
+    #    ``KyotoUAuth`` attribute / method / submitter names that the
+    #    QL queries match against. The QL fixtures use synthetic
+    #    stand-ins that mirror those names, so without this Python
+    #    invariant test a rename in ``src/kuauth/auth.py`` would
+    #    silently un-bind the queries while ``codeql test run`` stayed
+    #    green.
+    # 2. ``codeql test run`` against the committed ``.expected``
+    #    baselines catches the case where the QL logic itself changes
+    #    output without a corresponding baseline update.
+    #
+    # Pytest runs first because it's <1s and a failure there means the
+    # QL fixtures are testing the wrong surface — running the slower
+    # QL tests in that state would just hide the real diagnostic.
+    name: QL test run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync
+
+      - name: Pin kuauth surface invariants (pytest)
+        run: uv run pytest tests/unit/test_codeql_query_surface.py -v
+
+      # init@v3 installs the CodeQL CLI on PATH; we don't actually run
+      # ``analyze`` from this job, just borrow the CLI for ``test run``.
+      - name: Initialize CodeQL (for CLI only)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          setup-python-dependencies: false
+
+      - name: Resolve pack dependencies
+        run: |
+          codeql pack install .github/codeql/lib
+          codeql pack install .github/codeql/queries
+          codeql pack install .github/codeql/queries/tests
+
+      - name: Run QL tests against committed baselines
+        run: codeql test run .github/codeql/queries/tests/

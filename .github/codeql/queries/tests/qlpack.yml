@@ -1,0 +1,7 @@
+name: kuauth/credential-leak-queries-tests
+version: 0.0.1
+extractor: python
+tests: .
+dependencies:
+  kuauth/credential-leak-queries: "*"
+  codeql/python-all: "*"

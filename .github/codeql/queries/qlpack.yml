@@ -1,0 +1,8 @@
+name: kuauth/credential-leak-queries
+version: 0.0.1
+library: false
+dependencies:
+  codeql/python-all: "*"
+  kuauth/credential-leak-lib: "*"
+suites: codeql-suites
+defaultSuiteFile: codeql-suites/credential-leak.qls

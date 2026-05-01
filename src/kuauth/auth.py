@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import ssl
-from typing import Callable, Self
+from collections.abc import Callable
+from typing import Self
 
 import httpx
 import pyotp

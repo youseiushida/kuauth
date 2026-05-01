@@ -103,6 +103,13 @@ ignore = [
 include = ["src", "tests"]
 exclude = [".venv", "dist", "**/__pycache__"]
 pythonVersion = "3.12"
+# Point pyright at the uv-managed venv so it can resolve httpx / bs4 /
+# pyotp / pytest / respx. Without this, every third-party import surfaces
+# as ``reportMissingImports`` and the cascade of Unknown types produces
+# downstream noise (e.g. ``"close" is not a known attribute of None`` on
+# ``self._http`` because ``httpx.Client`` itself can't be resolved).
+venvPath = "."
+venv = ".venv"
 # Standard mode catches the high-value issues (undefined vars, missing
 # returns, wrong arg types) without strict mode's demand for annotations
 # on every test helper. Bump to "strict" once the surface is stable.

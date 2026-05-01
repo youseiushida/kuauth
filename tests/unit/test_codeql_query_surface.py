@@ -24,13 +24,15 @@ Adding a NEW credential-bearing attribute? Add the name here AND in
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from kuauth.auth import KyotoUAuth
 
 
 @pytest.fixture
-def auth() -> KyotoUAuth:
+def auth() -> Iterator[KyotoUAuth]:
     a = KyotoUAuth(
         "u",
         "p",

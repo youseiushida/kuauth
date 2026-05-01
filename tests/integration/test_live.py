@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import httpx
 import pytest
@@ -84,7 +84,7 @@ def _creds() -> tuple[str, str, str | None]:
 
 
 @pytest.fixture(scope="module")
-def auth_with_totp() -> KyotoUAuth:
+def auth_with_totp() -> Iterator[KyotoUAuth]:
     """For SPs that route through the OTP-required SimpleSAMLphp IdP
     (KULASIS, KULMS). Skips if ``KUAUTH_TOTP_SECRET`` is not set."""
     user, pw, totp = _creds()
@@ -96,7 +96,7 @@ def auth_with_totp() -> KyotoUAuth:
 
 
 @pytest.fixture(scope="module")
-def auth_no_totp() -> KyotoUAuth:
+def auth_no_totp() -> Iterator[KyotoUAuth]:
     """For SPs that don't route through the OTP IdP (MyKULINE, PandA).
 
     Using this fixture proves those SPs don't require ``totp_secret`` —

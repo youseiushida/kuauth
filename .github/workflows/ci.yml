@@ -62,6 +62,14 @@ jobs:
     name: Unit + replay tests (coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # codecov-action's tokenless (OIDC) upload mints a short-lived ID
+    # token via GitHub's OIDC provider; that requires id-token: write at
+    # the job level. ``contents: read`` is the workflow default but we
+    # restate it here because once you set any permission on a job, the
+    # rest fall back to none.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -106,7 +114,13 @@ jobs:
       # and the noise would dominate alerts. ``uv export --no-dev`` writes
       # the runtime-only resolution from uv.lock to a requirements file
       # that pip-audit can consume.
+      # ``--no-emit-project`` excludes kuauth itself from the export.
+      # Without it, uv export writes an editable line for the project root
+      # (``-e file://${{ github.workspace }}``), which pip-audit's hashed
+      # install path can't materialize ("cannot be installed when requiring
+      # hashes, because there is no single file to hash"). We're auditing
+      # third-party deps for CVEs, not the local source tree.
       - name: Export runtime dependencies
-        run: uv export --no-dev --frozen --format requirements-txt -o requirements.txt
+        run: uv export --no-dev --no-emit-project --frozen --format requirements-txt -o requirements.txt
       - name: Run pip-audit
         run: uv run pip-audit -r requirements.txt --strict

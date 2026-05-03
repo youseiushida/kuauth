@@ -192,6 +192,57 @@ def test_missing_shibsession_raises(fixtures_dir, http_client):
             KULASIS(auth).get("/student/la/top")
 
 
+def test_post_and_request_set_sjis_encoding(fixtures_dir, http_client):
+    """``KULASIS.post`` and ``KULASIS.request`` override ``response.encoding``
+    to cp932 just like ``.get`` does. Without these overrides, httpx's
+    charset auto-detection would mis-decode any SJIS body returned by a
+    POST/PUT (e.g., a course-registration submit). Pin the override
+    explicitly — autodetection on a body without a Content-Type charset
+    silently falls back to UTF-8."""
+    body_sjis = "登録完了".encode("cp932")  # registration complete
+    sjis_response_factory = lambda: httpx.Response(  # noqa: E731
+        200,
+        # No charset in Content-Type — forces httpx to guess. The override
+        # is what makes ``.text`` decode correctly.
+        headers={"Content-Type": "text/html"},
+        content=body_sjis,
+    )
+
+    with respx.mock(assert_all_called=False) as mock:
+        build_simplesaml_idp_router(
+            mock,
+            fixtures_dir,
+            saml_autosubmit_fixture="saml_autosubmit_kulasis.html",
+            sp_saml_acs_url=SP_ACS,
+            sp_redirect_location=SP_ENTRY,
+            shibsession_host="www.k.kyoto-u.ac.jp",
+            shibsession_cookie_name="_shibsession_KULASIS",
+        )
+        mock.get(SP_ENTRY).mock(
+            side_effect=[
+                sp_entry_redirect_response(),
+                sjis_response_factory(),
+            ]
+        )
+        mock.post("https://www.k.kyoto-u.ac.jp/student/la/submit").mock(
+            return_value=sjis_response_factory()
+        )
+        mock.route(method="PUT", url="https://www.k.kyoto-u.ac.jp/student/la/update").mock(
+            return_value=sjis_response_factory()
+        )
+
+        auth = KyotoUAuth("u", "p", totp_secret="JBSWY3DPEHPK3PXP", http=http_client)
+        svc = KULASIS(auth)
+
+        post_resp = svc.post("/student/la/submit", data={"course": "X"})
+        assert post_resp.encoding == "cp932"
+        assert post_resp.text == "登録完了"
+
+        put_resp = svc.request("PUT", "/student/la/update", data={"k": "v"})
+        assert put_resp.encoding == "cp932"
+        assert put_resp.text == "登録完了"
+
+
 def test_shibsession_from_sibling_sp_does_not_pass_guard(fixtures_dir, http_client):
     """Regression: the shibsession guard must be scoped to THIS SP's host.
 

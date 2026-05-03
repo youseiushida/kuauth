@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><title>Kyoto University Web Login Service</title></head>
+<body>
+<h2>Login</h2>
+<form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s0" method="post">
+  <input type="hidden" name="csrf_token" value="TEST_CSRF_SHIB_LOGIN">
+  <label>Username <input type="text" name="j_username" value=""></label>
+  <label>Password <input type="password" name="j_password" value=""></label>
+  <input type="hidden" name="_eventId_proceed" value="">
+  <input type="submit" value="Login">
+</form>
+</body>
+</html>

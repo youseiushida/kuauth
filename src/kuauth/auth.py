@@ -71,9 +71,21 @@ class KyotoUAuth:
         timeout: float = 20.0,
     ) -> None:
         self._username = username
-        self._password = password
-        self._totp_secret = totp_secret
-        self._onetime_password = onetime_password
+        # Credentials live in bytearrays so ``close()`` can overwrite them
+        # with zeros. Python str is immutable — keeping passwords as str
+        # leaves arbitrary copies in the GC graph until the next major
+        # collection, which can show up in core dumps or swap. Bytearrays
+        # are mutable and clearable in place, so the master copy held by
+        # this instance has a bounded, explicit lifetime. Copies derived
+        # at use-time (e.g. handed to httpx for form encoding) still leak
+        # via str interning, but the master copy is the longest-lived one.
+        self._password: bytearray | None = bytearray(password.encode("utf-8"))
+        self._totp_secret: bytearray | None = (
+            bytearray(totp_secret.encode("utf-8")) if totp_secret is not None else None
+        )
+        self._onetime_password: bytearray | None = (
+            bytearray(onetime_password.encode("utf-8")) if onetime_password is not None else None
+        )
         self._otp_callback = otp_callback
         self._owns_http = http is None
         if http is None:
@@ -106,11 +118,30 @@ class KyotoUAuth:
 
     @property
     def password(self) -> str:
-        return self._password
+        if self._password is None:
+            raise RuntimeError("KyotoUAuth has been closed; credentials are no longer available")
+        return bytes(self._password).decode("utf-8")
 
     def close(self) -> None:
-        if self._owns_http:
+        if self._owns_http and not self._http.is_closed:
             self._http.close()
+        self._zero_credentials()
+
+    def _zero_credentials(self) -> None:
+        """Overwrite credential bytearrays with zeros and drop the references.
+
+        Idempotent — safe to call repeatedly. Note that this only zeros the
+        master copy held by this instance: any str/bytes copies that pyotp
+        or httpx took during the auth flow live in their own GC graphs and
+        will be collected on their own schedule.
+        """
+        for attr in ("_password", "_totp_secret", "_onetime_password"):
+            buf = getattr(self, attr, None)
+            if isinstance(buf, bytearray):
+                for i in range(len(buf)):
+                    buf[i] = 0
+                buf.clear()
+                setattr(self, attr, None)
 
     def __enter__(self) -> Self:
         return self
@@ -118,12 +149,24 @@ class KyotoUAuth:
     def __exit__(self, *_exc) -> None:
         self.close()
 
+    def __repr__(self) -> str:
+        # Don't leak credentials when the auth object is logged, printed,
+        # or shows up in a traceback's locals dump. Reveal only what's
+        # already public (the username) plus presence flags.
+        return (
+            f"KyotoUAuth(username={self._username!r}, "
+            f"password={'<redacted>' if self._password is not None else '<closed>'}, "
+            f"totp_secret={'<redacted>' if self._totp_secret is not None else None}, "
+            f"onetime_password={'<redacted>' if self._onetime_password is not None else None}, "
+            f"otp_callback={'<set>' if self._otp_callback is not None else None})"
+        )
+
     def _resolve_otp(self) -> str:
-        if self._onetime_password:
-            return self._onetime_password.strip()
-        if self._totp_secret:
-            return pyotp.TOTP(self._totp_secret).now()
-        if self._otp_callback:
+        if self._onetime_password is not None:
+            return bytes(self._onetime_password).decode("utf-8").strip()
+        if self._totp_secret is not None:
+            return pyotp.TOTP(bytes(self._totp_secret).decode("utf-8")).now()
+        if self._otp_callback is not None:
             return str(self._otp_callback()).strip()
         raise OTPRequiredError(
             "OTP required but no onetime_password, totp_secret, or otp_callback configured"

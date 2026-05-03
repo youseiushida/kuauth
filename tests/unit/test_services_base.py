@@ -310,3 +310,71 @@ def test_default_walk_consent_flow_raises():
     svc = _RequiresConsentService(auth)
     with pytest.raises(ConsentRequiredError):
         svc.get("/anything")
+
+
+def test_follow_meta_refresh_hop_budget_exceeded():
+    """A meta-refresh chain that never settles must raise SPAccessError after
+    max_hops, not spin until httpx times out. Real failure mode: an IdP in
+    maintenance returning a redirect-loop refresh page."""
+    refresh_html = '<html><head><meta http-equiv="refresh" content="0; url=/next"></head></html>'
+    client = _client_with_handler(_persistent_form_handler(refresh_html))
+    auth = KyotoUAuth("u", "p", http=client)
+    svc = _FakeService(auth)
+
+    initial = httpx.Response(
+        200,
+        text=refresh_html,
+        request=httpx.Request("GET", "https://example.test/start"),
+    )
+    with pytest.raises(SPAccessError, match="meta-refresh chain did not settle"):
+        svc._follow_meta_refresh(initial)
+
+
+class TestCookieMatchesHost:
+    """Cookie-domain → host scoping for ``_shibsession_*`` matching.
+
+    Pure function with subtle correctness traps (off-by-one in suffix
+    matching, leading-dot handling, substring spoofing). Cheap to test
+    because there are only two args; testing the negative cases is the
+    whole point — exact-match-only would silently lose Domain=parent
+    cookies, while substring matching would let ``fakekyoto-u.ac.jp``
+    accept a ``.kyoto-u.ac.jp`` cookie.
+    """
+
+    def test_exact_match(self):
+        assert ShibbolethSPService._cookie_matches_host(
+            "www.k.kyoto-u.ac.jp", "www.k.kyoto-u.ac.jp"
+        )
+
+    def test_leading_dot_stripped(self):
+        # ``Set-Cookie: Domain=.kyoto-u.ac.jp`` → cookie_host = "kyoto-u.ac.jp",
+        # which must still match the exact-host case.
+        assert ShibbolethSPService._cookie_matches_host(".kyoto-u.ac.jp", "kyoto-u.ac.jp")
+
+    def test_parent_domain_matches_subdomain(self):
+        # Domain=.kyoto-u.ac.jp cookie is sent to www.k.kyoto-u.ac.jp per
+        # RFC 6265 — the suffix path must accept it.
+        assert ShibbolethSPService._cookie_matches_host(".kyoto-u.ac.jp", "www.k.kyoto-u.ac.jp")
+
+    def test_substring_spoofing_rejected(self):
+        # Critical: ``fakekyoto-u.ac.jp`` ends with ``kyoto-u.ac.jp`` as a
+        # plain string, but is a different registrable domain. The dot
+        # separator in ``"." + cookie_host`` is what blocks this.
+        assert not ShibbolethSPService._cookie_matches_host(".kyoto-u.ac.jp", "fakekyoto-u.ac.jp")
+
+    def test_unrelated_domain_rejected(self):
+        assert not ShibbolethSPService._cookie_matches_host(".other.ac.jp", "www.k.kyoto-u.ac.jp")
+
+    def test_sibling_subdomain_rejected(self):
+        # A cookie scoped to a specific host must not bleed to a sibling.
+        assert not ShibbolethSPService._cookie_matches_host(
+            "kuline.kulib.kyoto-u.ac.jp", "www.k.kyoto-u.ac.jp"
+        )
+
+    def test_empty_inputs_rejected(self):
+        # Defense in depth: cookie jars can carry blank domains
+        # (host-only cookies on some libraries) — refuse rather than
+        # matching everything.
+        assert not ShibbolethSPService._cookie_matches_host("", "host.example")
+        assert not ShibbolethSPService._cookie_matches_host(".kyoto-u.ac.jp", "")
+        assert not ShibbolethSPService._cookie_matches_host("", "")

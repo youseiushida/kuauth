@@ -55,18 +55,11 @@ def _collect_inputs(form: Tag) -> dict[str, str]:
     return fields
 
 
-def _find_form(
-    soup: BeautifulSoup, *, form_id: str | None = None, has_input: str | None = None
-) -> Tag:
-    if form_id:
-        form = soup.find("form", id=form_id)
-        if form:
+def _find_form(soup: BeautifulSoup, *, has_input: str) -> Tag:
+    for form in soup.find_all("form"):
+        if form.find("input", {"name": has_input}):
             return form
-    if has_input:
-        for form in soup.find_all("form"):
-            if form.find("input", {"name": has_input}):
-                return form
-    raise AuthenticationError(f"form not found (id={form_id!r}, has_input={has_input!r})")
+    raise AuthenticationError(f"form with input name={has_input!r} not found")
 
 
 def _resolve_action(form: Tag, base_url: str | None) -> str:

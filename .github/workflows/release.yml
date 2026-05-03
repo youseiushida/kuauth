@@ -1,12 +1,24 @@
 name: Release
 
-# Tag-triggered PyPI publish via OIDC trusted publishing.
+# Tag-triggered PyPI publish via OIDC trusted publishing + PEP 740
+# attestations + CycloneDX SBOM.
+#
+# Supply chain layers:
+#   1. OIDC trusted publishing — no API token, GitHub mints a short-lived
+#      credential scoped to this workflow + environment.
+#   2. PEP 740 attestations — sigstore signature minted from the same OIDC
+#      identity. PyPI exposes it so ``pip``/``sigstore-python`` can verify
+#      "this wheel was actually built by this workflow at this tag."
+#   3. CycloneDX SBOM — machine-readable dependency graph of the resolved
+#      runtime tree, attached as a workflow artifact. Same input as
+#      pip-audit, so CVE scan and SBOM cannot drift.
 #
 # To cut a release:
 #   1. Bump ``__version__`` in src/kuauth/__init__.py (only place — pyproject
 #      reads it dynamically via [tool.hatch.version]).
 #   2. Commit, push, then ``git tag vX.Y.Z && git push origin vX.Y.Z``.
-#   3. This workflow builds sdist+wheel and publishes to PyPI.
+#   3. This workflow builds sdist+wheel+SBOM and publishes to PyPI with
+#      attestations.
 #
 # One-time PyPI setup (do this on pypi.org once before the first run):
 #   PyPI → manage project ``kuauth`` → Publishing → Add a new pending
@@ -29,7 +41,7 @@ permissions:
 
 jobs:
   build:
-    name: Build sdist + wheel
+    name: Build sdist + wheel + SBOM
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -54,10 +66,31 @@ jobs:
             exit 1
           fi
       - run: uv build
+
+      # CycloneDX SBOM generated from the same ``uv export`` output that
+      # ci.yml's pip-audit gate uses, so the published SBOM and the CVE
+      # scan see identical inputs (no drift between "what we audited" and
+      # "what we declare we shipped"). Generated as a separate artifact
+      # rather than into ``dist/`` so the PyPI publisher only sees wheel
+      # + sdist (its glob ignores other files, but explicit > implicit).
+      - name: Export runtime requirements
+        run: uv export --no-dev --no-emit-project --frozen --format requirements-txt -o requirements.txt
+      - name: Generate CycloneDX SBOM
+        run: |
+          mkdir -p sbom
+          uvx --from cyclonedx-bom cyclonedx-py requirements \
+            --of JSON \
+            --output-file "sbom/kuauth-${GITHUB_REF_NAME#v}-sbom.cdx.json" \
+            requirements.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/
 
   publish:
     name: Publish to PyPI
@@ -80,4 +113,12 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
-        # No ``with: password:`` — trusted publishing handles auth via OIDC.
+        with:
+          # PEP 740 attestations: the action mints a sigstore signature
+          # using the same OIDC identity it uses for trusted publishing,
+          # then submits the bundle to PyPI alongside the wheel/sdist.
+          # PyPI exposes it on the project page; ``pip``/``sigstore-python``
+          # can verify "this exact wheel was built by this exact workflow
+          # at this exact tag" without any user-side key management.
+          attestations: true
+        # No ``password:`` — trusted publishing handles auth via OIDC.

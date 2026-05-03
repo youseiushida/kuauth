@@ -193,6 +193,21 @@ class TestCasLoginForm:
         with pytest.raises(AuthenticationError):
             _parsers.parse_cas_login_form(LOGIN_FORM_HTML)
 
+    def test_rejects_form_with_lt_but_no_execution(self):
+        # A form carrying ``lt`` without ``execution`` is not a complete CAS
+        # 3.x form — refuse rather than POSTing without the execution token.
+        html = """
+        <html><body>
+        <form id="fm1" method="post" action="/cas/login">
+          <input type="text" name="username">
+          <input type="password" name="password">
+          <input type="hidden" name="lt" value="LT-1500-TEST">
+        </form>
+        </body></html>
+        """
+        with pytest.raises(AuthenticationError, match="missing 'execution'"):
+            _parsers.parse_cas_login_form(html)
+
 
 class TestEppnForm:
     def test_extracts_eppn_and_csrf(self):

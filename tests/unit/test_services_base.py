@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from kuauth.auth import KyotoUAuth
+from kuauth.exceptions import AuthenticationError, ConsentRequiredError, SPAccessError
 from kuauth.services._base import ShibbolethSPService
 from kuauth.services.kulasis import KULASIS
 
@@ -176,3 +178,135 @@ def test_cookies_triggers_ensure_session_when_not_ready(monkeypatch):
 
     assert calls["n"] == 1
     assert dict(cookies.items()) == {"session": "READY"}
+
+
+# --- Guard-path coverage for _advance_through_idp ---
+#
+# Each test below pins one of the explicit raise paths in the IdP walk so a
+# regression that silently latches ``_sp_ready=True`` on an unauthenticated
+# page would fail loudly here, rather than waiting for the daily live cron.
+
+_LOGIN_FORM_HTML = """
+<html><body>
+<form id="login" method="post" action="login.cgi">
+  <input name="username">
+  <input type="password" name="password">
+  <input type="hidden" name="op" value="login">
+  <input type="hidden" name="sessid" value="TEST_SESSID">
+</form>
+</body></html>
+"""
+
+_OTP_FORM_HTML = """
+<html><body>
+<form id="login" method="post" action="otplogin.cgi">
+  <input name="username">
+  <input type="password" name="password">
+  <input type="hidden" name="op" value="login">
+  <input type="hidden" name="sessid" value="TEST_SESSID_OTP">
+</form>
+</body></html>
+"""
+
+_SHIB_IDP_LOGIN_HTML = """
+<html><body>
+<form method="post" action="/idp/profile/SAML2/Redirect/SSO?execution=e1s1">
+  <input name="j_username">
+  <input type="password" name="j_password">
+  <input type="hidden" name="csrf_token" value="TEST_CSRF">
+</form>
+</body></html>
+"""
+
+_LOCALSTORAGE_FORM_HTML = """
+<html><body>
+<form method="post" action="/idp/profile/SAML2/Redirect/SSO?execution=e1s2">
+  <input type="hidden" name="csrf_token" value="TEST_CSRF">
+  <input type="hidden" name="shib_idp_ls_exception.shib_idp_persistent_ss" value="">
+  <input type="hidden" name="shib_idp_ls_success.shib_idp_persistent_ss" value="">
+</form>
+</body></html>
+"""
+
+_CONSENT_HTML = """
+<html><body>
+<form method="post" action="/idp/profile/SAML2/Redirect/SSO?execution=e1s3">
+  <input type="hidden" name="csrf_token" value="TEST_CSRF">
+  <input type="checkbox" name="_shib_idp_consentIds" value="uid" checked>
+  <input type="checkbox" name="_shib_idp_consentOptions" value="_shib_idp_rememberConsent">
+</form>
+</body></html>
+"""
+
+
+class _RequiresConsentService(ShibbolethSPService):
+    BASE_URL = "https://example.test"
+    ENTRY_PATH = "/entry"
+    REQUIRES_CONSENT = True
+
+
+def _persistent_form_handler(html: str):
+    """Return a MockTransport handler that serves the same HTML for any URL.
+
+    Used to simulate a credential-rejection loop: the IdP keeps returning
+    the same form because the submit didn't take.
+    """
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    return handler
+
+
+def _client_with_handler(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+def test_password_rejected_raises_authentication_error():
+    """Login form persists after POST → password was rejected, raise immediately
+    (don't retry — Kyoto-U lockout threshold is low)."""
+    client = _client_with_handler(_persistent_form_handler(_LOGIN_FORM_HTML))
+    auth = KyotoUAuth("u", "wrong", totp_secret="JBSWY3DPEHPK3PXP", http=client)
+    svc = _FakeService(auth)
+    with pytest.raises(AuthenticationError, match="password rejected"):
+        svc.get("/anything")
+
+
+def test_otp_rejected_raises_authentication_error():
+    """OTP form persists after POST → OTP was rejected, raise immediately."""
+    client = _client_with_handler(_persistent_form_handler(_OTP_FORM_HTML))
+    auth = KyotoUAuth("u", "p", onetime_password="000000", http=client)
+    svc = _FakeService(auth)
+    with pytest.raises(AuthenticationError, match="OTP rejected"):
+        svc.get("/anything")
+
+
+def test_shib_idp_login_rejected_raises_authentication_error():
+    """j_username form persists after POST → Java Shib IdP rejected creds."""
+    client = _client_with_handler(_persistent_form_handler(_SHIB_IDP_LOGIN_HTML))
+    auth = KyotoUAuth("u", "wrong", http=client)
+    svc = _FakeService(auth)
+    with pytest.raises(AuthenticationError, match="Shib IdP rejected"):
+        svc.get("/anything")
+
+
+def test_hop_budget_exceeded_raises_sp_access_error():
+    """If the IdP keeps returning an interstitial form past the 20-hop budget,
+    raise SPAccessError rather than spinning forever or settling on it."""
+    # Localstorage form has no early-rejection check, so the loop just
+    # consumes its hop budget and exits, triggering the post-loop guard.
+    client = _client_with_handler(_persistent_form_handler(_LOCALSTORAGE_FORM_HTML))
+    auth = KyotoUAuth("u", "p", http=client)
+    svc = _FakeService(auth)
+    with pytest.raises(SPAccessError, match="did not complete within 20 hops"):
+        svc.get("/anything")
+
+
+def test_default_walk_consent_flow_raises():
+    """A subclass with REQUIRES_CONSENT=True but no _walk_consent_flow override
+    must raise ConsentRequiredError rather than silently skipping the page."""
+    client = _client_with_handler(_persistent_form_handler(_CONSENT_HTML))
+    auth = KyotoUAuth("u", "p", http=client)
+    svc = _RequiresConsentService(auth)
+    with pytest.raises(ConsentRequiredError):
+        svc.get("/anything")

@@ -83,6 +83,34 @@ KUMOI (Microsoft 365) はテナント admin consent が必要なため、スコ�
 
 個別エンドポイントのラッパメソッドは持たない設計です。HAR ファイルから URL とフォーム構造を特定すれば、`KULASIS(auth).post(...)` などを使って呼び出し側で任意のページを叩けます。
 
+## クレデンシャルの取り扱い
+
+`KyotoUAuth` はパスワード / TOTP シークレット / 事前生成 OTP を `bytearray` で保持し、`close()` または `with` ブロック終了時にゼロで上書きしてから参照を捨てます。Python の `str` は immutable なので「完璧に消す」ことは原理的に不可能ですが、マスタコピーの寿命が明示的に短くなるので、コアダンプ・スワップ経由の事故確率は下がります。
+
+```python
+auth = KyotoUAuth("a0XXXXXX", "secret", totp_secret="JBSWY3DPEHPK3PXP")
+print(auth)  # KyotoUAuth(username='a0XXXXXX', password=<redacted>, totp_secret=<redacted>, ...)
+auth.close()
+auth.password  # RuntimeError: closed
+```
+
+`__repr__` は常にマスクされるので、`print(auth)` / `f"{auth}"` / トレースバックの locals dump 経由でクレデンシャルが流れることはありません。username だけは IdP に EPPN として渡る情報なのでマスク対象外です。
+
+クレデンシャルをどこから取ってくるか (環境変数 / OS キーチェーン / vault など) はライブラリのスコープ外で、呼び出し側の責任です。`keyring` から取りたい場合の例:
+
+```python
+import keyring
+from kuauth import KyotoUAuth
+
+# 事前に: python -m keyring set kuauth a0XXXXXX
+#         python -m keyring set kuauth-totp a0XXXXXX  (KULASIS / KULMS を使う場合)
+auth = KyotoUAuth(
+    "a0XXXXXX",
+    keyring.get_password("kuauth", "a0XXXXXX"),
+    totp_secret=keyring.get_password("kuauth-totp", "a0XXXXXX"),
+)
+```
+
 ## テスト
 
 ```bash

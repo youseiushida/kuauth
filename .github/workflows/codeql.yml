@@ -42,7 +42,7 @@ jobs:
         language: [python]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # uv installs the project so CodeQL's Python extractor can resolve
       # imports of ``httpx`` / ``bs4`` / ``pyotp`` and follow taint into
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
